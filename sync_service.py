@@ -252,28 +252,25 @@ class GitHubSyncService:
 
                     # WINDOW-BOUNDED FILTER: strictly inside [start_date, end_date]
                     if committed_at and self.is_within_window(committed_at, start_date, end_date):
-                        # Idempotent Upsert using sha & evaluation_id
-                        c_stmt = select(Commit).where(
-                            Commit.evaluation_id == evaluation.id, Commit.sha == node["sha"]
+                        # Idempotent Upsert using sha & evaluation_id with Postgres ON CONFLICT
+                        c_stmt = pg_insert(Commit).values(
+                            evaluation_id=evaluation.id,
+                            sha=node["sha"],
+                            author_login=author_login,
+                            committed_at=committed_at,
+                            additions=node.get("additions", 0),
+                            deletions=node.get("deletions", 0),
+                            message=node.get("message", ""),
                         )
-                        c_res = await session.execute(c_stmt)
-                        existing_commit = c_res.scalar_one_or_none()
-
-                        if not existing_commit:
-                            commit_obj = Commit(
-                                evaluation_id=evaluation.id,
-                                sha=node["sha"],
-                                author_login=author_login,
-                                committed_at=committed_at,
-                                additions=node.get("additions", 0),
-                                deletions=node.get("deletions", 0),
-                                message=node.get("message", ""),
+                        c_stmt = c_stmt.on_conflict_do_update(
+                            index_elements=['evaluation_id', 'sha'],
+                            set_=dict(
+                                additions=c_stmt.excluded.additions,
+                                deletions=c_stmt.excluded.deletions
                             )
-                            session.add(commit_obj)
-                            commits_pulled += 1
-                        else:
-                            existing_commit.additions = node.get("additions", 0)
-                            existing_commit.deletions = node.get("deletions", 0)
+                        )
+                        await session.execute(c_stmt)
+                        commits_pulled += 1
 
                 commit_page_info = history_data.get("pageInfo", {})
                 has_more_commits = commit_page_info.get("hasNextPage", False)
@@ -289,13 +286,6 @@ class GitHubSyncService:
                     author_login = pr_node.get("author", {}).get("login", "unknown")
 
                     if opened_at and self.is_within_window(opened_at, start_date, end_date):
-                        pr_stmt = select(PullRequest).where(
-                            PullRequest.evaluation_id == evaluation.id,
-                            PullRequest.pr_number == pr_node["number"],
-                        )
-                        pr_res = await session.execute(pr_stmt)
-                        existing_pr = pr_res.scalar_one_or_none()
-
                         reviews = pr_node.get("reviews", {}).get("nodes", [])
                         review_dts = [
                             self.parse_iso_dt(r.get("createdAt"))
@@ -304,28 +294,31 @@ class GitHubSyncService:
                         ]
                         first_review_at = min(review_dts) if review_dts else None
 
-                        if not existing_pr:
-                            pr_obj = PullRequest(
-                                evaluation_id=evaluation.id,
-                                pr_number=pr_node["number"],
-                                author_login=author_login,
-                                opened_at=opened_at,
-                                merged_at=merged_at,
-                                closed_at=closed_at,
-                                first_review_at=first_review_at,
-                                additions=pr_node.get("additions", 0),
-                                deletions=pr_node.get("deletions", 0),
+                        pr_stmt = pg_insert(PullRequest).values(
+                            evaluation_id=evaluation.id,
+                            pr_number=pr_node["number"],
+                            author_login=author_login,
+                            opened_at=opened_at,
+                            merged_at=merged_at,
+                            closed_at=closed_at,
+                            first_review_at=first_review_at,
+                            additions=pr_node.get("additions", 0),
+                            deletions=pr_node.get("deletions", 0),
+                        )
+                        pr_stmt = pr_stmt.on_conflict_do_update(
+                            index_elements=['evaluation_id', 'pr_number'],
+                            set_=dict(
+                                merged_at=pr_stmt.excluded.merged_at,
+                                closed_at=pr_stmt.excluded.closed_at,
+                                first_review_at=pr_stmt.excluded.first_review_at,
+                                additions=pr_stmt.excluded.additions,
+                                deletions=pr_stmt.excluded.deletions,
                             )
-                            session.add(pr_obj)
-                            await session.flush()
-                            existing_pr = pr_obj
-                            prs_pulled += 1
-                        else:
-                            existing_pr.merged_at = merged_at
-                            existing_pr.closed_at = closed_at
-                            existing_pr.first_review_at = first_review_at
-                            existing_pr.additions = pr_node.get("additions", 0)
-                            existing_pr.deletions = pr_node.get("deletions", 0)
+                        ).returning(PullRequest.id)
+                        
+                        pr_res = await session.execute(pr_stmt)
+                        existing_pr_id = pr_res.scalar_one()
+                        prs_pulled += 1
 
                         for rev in reviews:
                             rev_at = self.parse_iso_dt(rev.get("createdAt"))
@@ -333,7 +326,7 @@ class GitHubSyncService:
                             if rev_at and self.is_within_window(rev_at, start_date, end_date):
                                 session.add(
                                     PRReviewer(
-                                        pr_id=existing_pr.id,
+                                        pr_id=existing_pr_id,
                                         reviewer_login=rev_author,
                                         reviewed_at=rev_at,
                                         review_state=rev.get("state", "COMMENTED"),
@@ -347,7 +340,7 @@ class GitHubSyncService:
                             if comm_at and self.is_within_window(comm_at, start_date, end_date):
                                 session.add(
                                     PRComment(
-                                        pr_id=existing_pr.id,
+                                        pr_id=existing_pr_id,
                                         author_login=comm_author,
                                         created_at=comm_at,
                                     )

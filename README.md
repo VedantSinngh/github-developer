@@ -1,40 +1,40 @@
-# Production-Grade GitHub-Based Candidate Evaluation Platform
+# Candidate Evaluation Platform — Root Architecture
 
-A transparent, auditable platform for evaluating software engineering candidates based on time-boxed GitHub activity.
+This repository is organized into a clean, decoupled full-stack architecture:
 
-## Architectural Highlights & Key Features
+- **Root Directory (`/`)**: Backend service (FastAPI, SQLAlchemy 2.0, Alembic, PostgreSQL triggers, APScheduler, ReportLab PDF generator) configured for 1-click deployment on **Render**.
+- **Frontend Directory (`/frontend`)**: Next.js 14 App Router application configured for deployment on **Vercel**.
 
-1. **Window-Bounded Activity Sync** ([sync_service.py](file:///c:/Users/vedaa/OneDrive/Desktop/resume-project/github/sync_service.py)):
-   - Never syncs commits or PRs outside the designated `[start_date, end_date]` window.
-   - Prevents pre-existing repository history from leaking into candidate scoring.
+## Architecture & File Mapping
 
-2. **Immutable Scoring Ledger** ([db_trigger.sql](file:///c:/Users/vedaa/OneDrive/Desktop/resume-project/github/db_trigger.sql)):
-   - Enforced at the **PostgreSQL DB layer** via a custom PL/pgSQL trigger function (`check_score_breakdown_immutability()`).
-   - Prevents any `UPDATE` or `DELETE` on `score_breakdown` rows when `evaluations.status = 'locked'`.
-
-3. **5-Signal Weighted Scoring Engine** ([scoring_engine.py](file:///c:/Users/vedaa/OneDrive/Desktop/resume-project/github/scoring_engine.py)):
-   - **Consistency**: Active day ratio with heavy penalties for last 10% window commit concentration (>60%).
-   - **PR Quality**: Line size normalization (ideal 50–500 LOC) and clean merge state.
-   - **Review Cycles**: Penalty for repeated requested-changes rounds.
-   - **Collaboration**: Activity on peer PRs (auto-redistributes weight to 0 for solo candidate evaluations).
-   - **Code Churn / Stability**: Penalty for touching files 5+ times in <2 weeks.
-
-4. **Background Sync & PDF Export**:
-   - In-process APScheduler running rate-limit-safe GraphQL background sync every 15 minutes.
-   - Server-side ReportLab PDF report generator for shareable candidate score cards.
-
-## Quick Start (Docker)
-
-```bash
-cp .env.example .env
-docker-compose up --build
+```
+.
+├── Procfile                      # Render start command (uvicorn main:app)
+├── render.yaml                   # Render Infrastructure-as-Code Blueprint
+├── render_build.sh               # Render build & migration script
+├── requirements.txt              # Backend dependencies
+├── alembic.ini                   # Alembic database migration config
+├── alembic/                      # Database migrations (0001_initial, 0002_add_share_token)
+├── main.py                       # FastAPI entry point & health check
+├── routes.py                     # API routes & rate limiters
+├── models.py                     # SQLAlchemy 2.0 models & constraints
+├── sync_service.py               # GitHub GraphQL sync service
+├── scoring_engine.py             # Pure 5-signal scoring engine
+├── db_trigger.sql                # Immutability DB trigger
+├── docker-compose.yml            # Local Docker orchestrator
+└── frontend/                     # Next.js 14 Frontend App (Vercel Root)
+    ├── vercel.json               # Vercel configuration
+    ├── package.json              # Frontend dependencies
+    └── src/                      # ElevenLabs UI pages & components
 ```
 
-Access Services:
-- **API Documentation (Swagger/OpenAPI)**: http://localhost:8000/docs
-- **Frontend Dashboard**: http://localhost:3000
-- **Adminer DB Inspection**: http://localhost:8080
+## Deployment Setup
 
-## Technical Pitch Summary for Interviews
+### 1. Render (Backend API)
+- Connect GitHub repo (`VedantSinngh/github-developer`) to **Render Blueprint**.
+- Render reads `render.yaml`, provisions a PostgreSQL database, executes `./render_build.sh`, and starts Uvicorn.
 
-> "We built an auditable candidate evaluation platform where scoring integrity is defensible legally and algorithmically. We enforced time window bounds at the GraphQL sync layer so legacy repo code never inflates scores, and locked final scores into an append-only PostgreSQL ledger backed by a database trigger that rejects any mutation once an evaluation closes."
+### 2. Vercel (Frontend App)
+- Connect GitHub repo (`VedantSinngh/github-developer`) to **Vercel**.
+- Set **Root Directory** to `frontend`.
+- Set Environment Variable `NEXT_PUBLIC_API_URL` to your Render API domain.

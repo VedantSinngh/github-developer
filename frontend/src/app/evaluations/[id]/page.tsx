@@ -1,30 +1,39 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
+import useSWR from "swr";
 import { ScoreRadarChart } from "@/components/ScoreRadarChart";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ActivityHeatmap } from "@/components/ActivityHeatmap";
 import { MetricCard } from "@/components/MetricCard";
+import { Skeleton } from "@/components/ui/skeleton";
+
+const fetcher = (url: string) => {
+  const token = localStorage.getItem("token");
+  return fetch(url, { headers: { Authorization: `Bearer ${token}` } }).then(res => res.json());
+};
 
 export default function EvaluationDetailPage({ params }: { params: { id: string } }) {
   const [status, setStatus] = useState<"active" | "locked">("locked");
 
-  const metrics = {
-    consistency: { normalized: 88.5, weight: 0.2 },
-    pr_quality: { normalized: 92.0, weight: 0.25 },
-    review_cycles: { normalized: 95.0, weight: 0.2 },
-    collaboration: { normalized: 78.0, weight: 0.15 },
-    stability: { normalized: 90.0, weight: 0.2 },
-  };
+  const { data: scoreData, error, isLoading } = useSWR(
+    `http://localhost:8000/evaluations/${params.id}/score`,
+    fetcher,
+    { refreshInterval: status === "active" ? 15000 : 0 } // Poll every 15s if active
+  );
 
-  useEffect(() => {
-    if (status === "active") {
-      const timer = setInterval(() => {
-        console.log("Polling live score from /evaluations/" + params.id + "/score");
-      }, 60000);
-      return () => clearInterval(timer);
-    }
-  }, [status, params.id]);
+  // Derive status from API if available, else fallback to state
+  const currentStatus = scoreData?.status || status;
+
+  const currentMetrics = scoreData?.breakdown ? {
+    consistency: { normalized: scoreData.breakdown.consistency_score, weight: 0.2 },
+    pr_quality: { normalized: scoreData.breakdown.pr_quality_score, weight: 0.25 },
+    review_cycles: { normalized: scoreData.breakdown.review_cycles_score, weight: 0.2 },
+    collaboration: { normalized: scoreData.breakdown.collaboration_score, weight: 0.15 },
+    stability: { normalized: scoreData.breakdown.stability_score, weight: 0.2 },
+  } : metrics;
+
+  const finalScore = scoreData?.final_score ?? null;
 
   return (
     <div className="min-h-screen bg-canvas text-ink p-12 font-sans relative overflow-hidden">
@@ -38,12 +47,12 @@ export default function EvaluationDetailPage({ params }: { params: { id: string 
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-5xl font-serif font-light text-ink tracking-tight">Jane Doe</h1>
-              <StatusBadge status={status} />
+              <StatusBadge status={currentStatus} />
               <button
                 onClick={() => setStatus(status === "active" ? "locked" : "active")}
                 className="text-[11px] text-muted underline ml-2 uppercase tracking-[0.96px]"
               >
-                (Toggle: {status})
+                (Mock Toggle: {currentStatus})
               </button>
             </div>
             <p className="text-body text-sm mt-2">
@@ -54,9 +63,10 @@ export default function EvaluationDetailPage({ params }: { params: { id: string 
             </p>
           </div>
           <div>
-            {status === "locked" ? (
+            {currentStatus === "locked" ? (
               <a
-                href={`/evaluations/${params.id}/report`}
+                href={`http://localhost:8000/evaluations/${params.id}/report`}
+                target="_blank"
                 className="px-6 py-3 bg-ink hover:bg-ink-primary text-on-primary rounded-pill text-xs font-semibold uppercase tracking-[0.96px] transition shadow-soft"
               >
                 Download Report Card (PDF)
@@ -70,7 +80,7 @@ export default function EvaluationDetailPage({ params }: { params: { id: string 
         </div>
 
         {/* ACTIVE STATE VIEW */}
-        {status === "active" && (
+        {currentStatus === "active" && (
           <div className="space-y-8">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               <div className="bg-surface-card border border-hairline rounded-xl p-8 shadow-soft flex flex-col justify-between">
@@ -79,11 +89,11 @@ export default function EvaluationDetailPage({ params }: { params: { id: string 
                     In-Progress Live Score
                   </span>
                   <div className="text-6xl font-serif font-light text-ink tracking-tight mt-3">
-                    84.20
+                    {isLoading ? <Skeleton className="h-16 w-32" /> : (finalScore !== null ? finalScore.toFixed(2) : "—")}
                   </div>
                 </div>
                 <p className="text-xs text-muted mt-6">
-                  Polling every 60s. Rate-limit-safe GraphQL worker running in background.
+                  Polling every 15s. Rate-limit-safe GraphQL worker running in background.
                 </p>
               </div>
 
@@ -105,7 +115,7 @@ export default function EvaluationDetailPage({ params }: { params: { id: string 
         )}
 
         {/* LOCKED STATE VIEW */}
-        {status === "locked" && (
+        {currentStatus === "locked" && (
           <div className="space-y-8">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               <div className="bg-surface-dark text-on-dark rounded-xxl p-8 shadow-2xl flex flex-col justify-between relative overflow-hidden">
@@ -114,7 +124,7 @@ export default function EvaluationDetailPage({ params }: { params: { id: string 
                     Final Weighted Score
                   </span>
                   <div className="text-7xl font-serif font-light text-on-dark tracking-tight mt-4">
-                    89.45
+                    {isLoading ? <Skeleton className="h-20 w-32 bg-on-dark-soft/20" /> : (finalScore !== null ? finalScore.toFixed(2) : "—")}
                   </div>
                 </div>
                 <div className="text-xs text-on-dark-soft mt-8 flex items-center gap-1.5 font-sans">
@@ -123,16 +133,16 @@ export default function EvaluationDetailPage({ params }: { params: { id: string 
               </div>
 
               <div className="md:col-span-2">
-                <ScoreRadarChart metrics={metrics} />
+                <ScoreRadarChart metrics={currentMetrics} />
               </div>
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-              <MetricCard title="Consistency" score={metrics.consistency.normalized} weight={metrics.consistency.weight} />
-              <MetricCard title="PR Quality" score={metrics.pr_quality.normalized} weight={metrics.pr_quality.weight} />
-              <MetricCard title="Review Cycles" score={metrics.review_cycles.normalized} weight={metrics.review_cycles.weight} />
-              <MetricCard title="Collaboration" score={metrics.collaboration.normalized} weight={metrics.collaboration.weight} />
-              <MetricCard title="Stability" score={metrics.stability.normalized} weight={metrics.stability.weight} />
+              <MetricCard title="Consistency" score={currentMetrics.consistency.normalized} weight={currentMetrics.consistency.weight} />
+              <MetricCard title="PR Quality" score={currentMetrics.pr_quality.normalized} weight={currentMetrics.pr_quality.weight} />
+              <MetricCard title="Review Cycles" score={currentMetrics.review_cycles.normalized} weight={currentMetrics.review_cycles.weight} />
+              <MetricCard title="Collaboration" score={currentMetrics.collaboration.normalized} weight={currentMetrics.collaboration.weight} />
+              <MetricCard title="Stability" score={currentMetrics.stability.normalized} weight={currentMetrics.stability.weight} />
             </div>
 
             {/* Flagged Audit Callouts */}

@@ -5,7 +5,10 @@ Pytest API Route Tests for Candidate Evaluation Platform using httpx AsyncClient
 from datetime import datetime, timedelta, timezone
 import pytest
 from httpx import ASGITransport, AsyncClient
-from main import app
+from unittest.mock import patch, AsyncMock
+from sqlalchemy import select
+from main import app, async_session
+from models import GitHubConnection
 
 
 @pytest.mark.asyncio
@@ -79,3 +82,29 @@ async def test_auth_and_evaluation_flow():
         report_res = await ac.get(f"/evaluations/{eval_id}/report", headers=headers)
         assert report_res.status_code == 200
         assert report_res.headers["content-type"] == "application/pdf"
+
+@pytest.mark.asyncio
+async def test_github_oauth_callback():
+    mock_post = AsyncMock()
+    mock_post.return_value.json.return_value = {
+        "access_token": "mocked_github_token_123",
+        "scope": "repo"
+    }
+
+    with patch("httpx.AsyncClient.post", new=mock_post), \
+         patch("os.getenv", side_effect=lambda k, default=None: "mock_val" if k in ["GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET", "GITHUB_ENCRYPTION_KEY"] else default):
+        
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+            res = await ac.get("/auth/github/callback?code=mock_code&state=1")
+            
+            # Since it redirects on success, check for 307 Temporary Redirect
+            assert res.status_code == 307
+            assert "dashboard?github_connected=true" in res.headers["location"]
+
+            # Verify the token is encrypted in the DB
+            async with async_session() as session:
+                db_res = await session.execute(select(GitHubConnection).where(GitHubConnection.evaluation_id == 1))
+                conn = db_res.scalar_one_or_none()
+                assert conn is not None
+                assert conn.access_token != "mocked_github_token_123"
+                assert len(conn.access_token) > 20 # Fernet tokens are long

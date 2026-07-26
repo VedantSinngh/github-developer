@@ -21,6 +21,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -147,6 +148,7 @@ class Commit(Base):
     __tablename__ = "commits"
     __table_args__ = (
         Index("idx_commits_eval_committed", "evaluation_id", "committed_at"),
+        UniqueConstraint("evaluation_id", "sha", name="uq_commit_eval_sha"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -182,6 +184,7 @@ class PullRequest(Base):
     __tablename__ = "pull_requests"
     __table_args__ = (
         Index("idx_pull_requests_eval_opened", "evaluation_id", "opened_at"),
+        UniqueConstraint("evaluation_id", "pr_number", name="uq_pr_eval_number"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

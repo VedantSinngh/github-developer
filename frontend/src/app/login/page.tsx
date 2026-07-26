@@ -1,15 +1,36 @@
 "use client";
 
-import React, { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Form, FormItem, FormLabel, FormControl } from "@/components/ui/form";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    localStorage.setItem("token", "synthetic_jwt_token");
-    window.location.href = "/dashboard";
+    setError("");
+    
+    try {
+      const res = await fetch("http://localhost:8000/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.detail || "Login failed");
+      }
+      
+      const data = await res.json();
+      localStorage.setItem("token", data.access_token);
+      window.location.href = "/dashboard";
+    } catch (err: any) {
+      setError(err.message);
+    }
   };
 
   return (
@@ -28,41 +49,37 @@ export default function LoginPage() {
           <p className="text-xs text-body">Access candidate evaluation score cards</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div>
-            <label className="block text-[12px] uppercase tracking-[0.96px] font-semibold text-muted mb-1.5">
-              Email Address
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full bg-surface-card border border-hairline-strong rounded-lg px-4 py-2.5 text-sm text-ink focus:outline-none focus:border-ink transition"
-              placeholder="recruiter@company.com"
-              required
-            />
-          </div>
+        <Form onSubmit={handleSubmit} className="space-y-5">
+          {error && <div className="text-red-500 text-sm font-medium text-center">{error}</div>}
+          <FormItem>
+            <FormLabel className="text-[12px] uppercase tracking-[0.96px] text-muted mb-1.5">Email Address</FormLabel>
+            <FormControl>
+              <Input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="recruiter@company.com"
+                required
+              />
+            </FormControl>
+          </FormItem>
 
-          <div>
-            <label className="block text-[12px] uppercase tracking-[0.96px] font-semibold text-muted mb-1.5">
-              Password
-            </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full bg-surface-card border border-hairline-strong rounded-lg px-4 py-2.5 text-sm text-ink focus:outline-none focus:border-ink transition"
-              required
-            />
-          </div>
+          <FormItem>
+            <FormLabel className="text-[12px] uppercase tracking-[0.96px] text-muted mb-1.5">Password</FormLabel>
+            <FormControl>
+              <Input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            </FormControl>
+          </FormItem>
 
-          <button
-            type="submit"
-            className="w-full bg-ink hover:bg-ink-primary text-on-primary font-medium py-3 rounded-pill text-sm transition shadow-soft"
-          >
+          <Button type="submit" className="w-full rounded-pill shadow-soft">
             Sign In
-          </button>
-        </form>
+          </Button>
+        </Form>
 
         <p className="text-xs text-center text-muted">
           Need a recruiter account?{" "}

@@ -19,7 +19,12 @@ from models import Base, Evaluation, EvaluationStatus, SyncLog
 from routes import get_db, limiter, router as api_router
 from sync_service import GitHubSyncService, run_auto_lock_transition_job
 
-DATABASE_URL = "sqlite+aiosqlite:///./test_app.db"
+import os
+
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/candidate_eval")
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("app")
@@ -31,10 +36,31 @@ scheduler = AsyncIOScheduler()
 sync_service = GitHubSyncService()
 
 
-async def scheduled_sync_and_auto_lock():
-    logger.info("Executing scheduled sync and auto-lock transition check...")
+from models import GitHubConnection
+
+async def scheduled_auto_lock():
+    logger.info("Executing auto-lock transition check...")
     async with async_session() as session:
         await run_auto_lock_transition_job(session, sync_service)
+
+async def scheduled_active_sync():
+    logger.info("Executing scheduled sync for all active evaluations...")
+    async with async_session() as session:
+        stmt = select(Evaluation).where(Evaluation.status == EvaluationStatus.ACTIVE)
+        res = await session.execute(stmt)
+        active_evals = res.scalars().all()
+        
+        for ev in active_evals:
+            conn_res = await session.execute(select(GitHubConnection).where(GitHubConnection.evaluation_id == ev.id))
+            conn = conn_res.scalar_one_or_none()
+            if conn:
+                try:
+                    enc_key = os.getenv("GITHUB_ENCRYPTION_KEY")
+                    sync_svc = GitHubSyncService(enc_key.encode() if enc_key else None)
+                    token = sync_svc.decrypt_token(conn.access_token)
+                    await sync_svc.sync_evaluation(session, ev.id, token)
+                except Exception as e:
+                    logger.error(f"Scheduled sync failed for eval {ev.id}: {e}")
 
 
 @asynccontextmanager
@@ -42,9 +68,10 @@ async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    scheduler.add_job(scheduled_sync_and_auto_lock, "interval", minutes=5)
+    scheduler.add_job(scheduled_auto_lock, "interval", minutes=5)
+    scheduler.add_job(scheduled_active_sync, "interval", minutes=15)
     scheduler.start()
-    logger.info("APScheduler started auto-lock transition job (every 5 mins).")
+    logger.info("APScheduler started auto-lock (5 mins) and active sync (15 mins) jobs.")
     yield
     scheduler.shutdown()
     await engine.dispose()

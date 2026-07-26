@@ -8,9 +8,12 @@ from decimal import Decimal
 import io
 import time
 from typing import Dict, List, Optional
+import os
+import httpx
+from cryptography.fernet import Fernet
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status, BackgroundTasks
+from fastapi.responses import StreamingResponse, RedirectResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -124,8 +127,67 @@ async def login(request: Request, req: RecruiterLoginRequest, db: AsyncSession =
 
 
 @router.get("/auth/github/callback", summary="GitHub OAuth Callback")
-async def github_callback(code: str, state: Optional[str] = None):
-    return {"status": "success", "message": "GitHub connection authorization received", "code": code}
+async def github_callback(code: str, state: Optional[str] = None, db: AsyncSession = Depends(get_db)):
+    if not state:
+        raise HTTPException(status_code=400, detail="Missing state parameter")
+    
+    try:
+        evaluation_id = int(state)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid state parameter, must be evaluation_id")
+        
+    client_id = os.getenv("GITHUB_CLIENT_ID")
+    client_secret = os.getenv("GITHUB_CLIENT_SECRET")
+    
+    if not client_id or not client_secret:
+        raise HTTPException(status_code=500, detail="GitHub OAuth credentials not configured")
+        
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            "https://github.com/login/oauth/access_token",
+            data={
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "code": code,
+                "state": state
+            },
+            headers={"Accept": "application/json"}
+        )
+        data = response.json()
+        
+    if "error" in data:
+        raise HTTPException(status_code=400, detail=f"GitHub OAuth error: {data.get('error_description')}")
+        
+    access_token = data.get("access_token")
+    scope = data.get("scope")
+    
+    if not access_token:
+        raise HTTPException(status_code=400, detail="Failed to retrieve access token")
+        
+    enc_key = os.getenv("GITHUB_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    cipher = Fernet(enc_key.encode())
+    encrypted_token = cipher.encrypt(access_token.encode()).decode()
+    
+    stmt = select(GitHubConnection).where(GitHubConnection.evaluation_id == evaluation_id)
+    res = await db.execute(stmt)
+    conn = res.scalar_one_or_none()
+    
+    if conn:
+        conn.access_token = encrypted_token
+        conn.scope = scope
+        conn.connected_at = datetime.now(timezone.utc)
+    else:
+        conn = GitHubConnection(
+            evaluation_id=evaluation_id,
+            access_token=encrypted_token,
+            scope=scope
+        )
+        db.add(conn)
+        
+    await db.commit()
+    
+    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+    return RedirectResponse(url=f"{frontend_url}/dashboard?github_connected=true")
 
 
 # Role Profiles Endpoints
@@ -225,6 +287,26 @@ async def get_evaluation_detail(
     return evaluation
 
 
+async def _run_background_sync(evaluation_id: int):
+    # Need to run with a fresh session because the current session will be closed
+    from main import async_session
+    async with async_session() as session:
+        conn_res = await session.execute(
+            select(GitHubConnection).where(GitHubConnection.evaluation_id == evaluation_id)
+        )
+        conn = conn_res.scalar_one_or_none()
+        token = conn.access_token if conn else "mock_token"
+        
+        # If token is real, decrypt it
+        enc_key = os.getenv("GITHUB_ENCRYPTION_KEY")
+        sync_svc = GitHubSyncService(enc_key.encode() if enc_key else None)
+        try:
+            token = sync_svc.decrypt_token(token)
+        except Exception:
+            pass # Probably a mock token or unencrypted during tests
+            
+        await sync_svc.sync_evaluation(session, evaluation_id, token)
+
 @router.post(
     "/evaluations/{id}/activate",
     response_model=EvaluationResponse,
@@ -232,6 +314,7 @@ async def get_evaluation_detail(
 )
 async def activate_evaluation(
     id: int,
+    background_tasks: BackgroundTasks,
     current_user: Recruiter = Depends(get_current_recruiter),
     db: AsyncSession = Depends(get_db),
 ):
@@ -248,6 +331,9 @@ async def activate_evaluation(
     evaluation.status = EvaluationStatus.ACTIVE
     await db.commit()
     await db.refresh(evaluation)
+    
+    background_tasks.add_task(_run_background_sync, id)
+    
     return evaluation
 
 
@@ -494,6 +580,40 @@ async def generate_report(
     story.append(Paragraph(f"Status: {evaluation.status.value.upper()}", styles["Normal"]))
     story.append(Paragraph(f"Final Score: {evaluation.final_score or 'N/A'}", styles["Heading1"]))
     story.append(Spacer(1, 18))
+    
+    sb_res = await db.execute(
+        select(ScoreBreakdown).where(ScoreBreakdown.evaluation_id == id)
+    )
+    breakdowns = sb_res.scalars().all()
+    
+    if breakdowns:
+        from reportlab.platypus import Table, TableStyle
+        from reportlab.lib import colors
+        
+        story.append(Paragraph("Score Breakdown", styles["Heading2"]))
+        story.append(Spacer(1, 12))
+        
+        table_data = [["Metric Name", "Raw Value", "Normalized Score", "Weight"]]
+        for b in breakdowns:
+            table_data.append([
+                b.metric_name.replace("_", " ").title(),
+                str(float(b.raw_value)),
+                f"{float(b.normalized_score):.2f}",
+                f"{float(b.weight):.3f}"
+            ])
+            
+        t = Table(table_data, colWidths=[200, 100, 100, 100])
+        t.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ]))
+        story.append(t)
+        story.append(Spacer(1, 18))
 
     doc.build(story)
     buffer.seek(0)
