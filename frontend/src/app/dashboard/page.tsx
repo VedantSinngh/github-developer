@@ -12,10 +12,18 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 
+type Evaluation = {
+  id: number;
+  candidate: string;
+  repo: string;
+  status: string;
+  score: number | null;
+};
+
 export default function DashboardPage() {
   const [filter, setFilter] = useState<string>("all");
 
-  const [evaluations, setEvaluations] = useState<any[]>([]);
+  const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {

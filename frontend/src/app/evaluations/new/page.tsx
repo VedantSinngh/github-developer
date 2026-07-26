@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Form, FormItem, FormLabel, FormControl } from "@/components/ui/form";
@@ -60,8 +60,8 @@ export default function NewEvaluationPage() {
       }
 
       window.location.href = "/dashboard";
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError((err as Error).message);
     }
   };
 
@@ -92,7 +92,7 @@ export default function NewEvaluationPage() {
                 <Input
                   type="text"
                   value={candidateName}
-                  onChange={(e) => setCandidateName(e.target.value)}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCandidateName(e.target.value)}
                   required
                 />
               </FormControl>
@@ -103,7 +103,7 @@ export default function NewEvaluationPage() {
                 <Input
                   type="email"
                   value={candidateEmail}
-                  onChange={(e) => setCandidateEmail(e.target.value)}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCandidateEmail(e.target.value)}
                   required
                 />
               </FormControl>
@@ -117,7 +117,7 @@ export default function NewEvaluationPage() {
                 <Input
                   type="text"
                   value={githubUsername}
-                  onChange={(e) => setGithubUsername(e.target.value)}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setGithubUsername(e.target.value)}
                   required
                 />
               </FormControl>
@@ -128,7 +128,7 @@ export default function NewEvaluationPage() {
                 <Input
                   type="text"
                   value={repoOwner}
-                  onChange={(e) => setRepoOwner(e.target.value)}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRepoOwner(e.target.value)}
                   required
                 />
               </FormControl>
@@ -139,7 +139,7 @@ export default function NewEvaluationPage() {
                 <Input
                   type="text"
                   value={repoName}
-                  onChange={(e) => setRepoName(e.target.value)}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRepoName(e.target.value)}
                   required
                 />
               </FormControl>
@@ -153,7 +153,7 @@ export default function NewEvaluationPage() {
                 <Input
                   type="datetime-local"
                   value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setStartDate(e.target.value)}
                   required
                 />
               </FormControl>
@@ -164,7 +164,7 @@ export default function NewEvaluationPage() {
                 <Input
                   type="datetime-local"
                   value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEndDate(e.target.value)}
                   required
                 />
               </FormControl>
