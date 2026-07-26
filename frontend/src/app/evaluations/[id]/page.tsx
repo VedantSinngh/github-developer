@@ -25,13 +25,21 @@ export default function EvaluationDetailPage({ params }: { params: { id: string 
   // Derive status from API if available, else fallback to state
   const currentStatus = scoreData?.status || status;
 
+  const fallbackMetrics = {
+    consistency: { normalized: 88.5, weight: 0.2 },
+    pr_quality: { normalized: 92.0, weight: 0.25 },
+    review_cycles: { normalized: 95.0, weight: 0.2 },
+    collaboration: { normalized: 78.0, weight: 0.15 },
+    stability: { normalized: 90.0, weight: 0.2 },
+  };
+
   const currentMetrics = scoreData?.breakdown ? {
     consistency: { normalized: scoreData.breakdown.consistency_score, weight: 0.2 },
     pr_quality: { normalized: scoreData.breakdown.pr_quality_score, weight: 0.25 },
     review_cycles: { normalized: scoreData.breakdown.review_cycles_score, weight: 0.2 },
     collaboration: { normalized: scoreData.breakdown.collaboration_score, weight: 0.15 },
     stability: { normalized: scoreData.breakdown.stability_score, weight: 0.2 },
-  } : metrics;
+  } : fallbackMetrics;
 
   const finalScore = scoreData?.final_score ?? null;
 
