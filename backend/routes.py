@@ -50,7 +50,7 @@ from schemas import (
 from scoring_engine import compute_final_score, persist_score
 from sync_service import GitHubSyncService
 
-SECRET_KEY = "DEV_SECRET_KEY_CHANGE_IN_PRODUCTION"
+SECRET_KEY = os.getenv("JWT_SECRET", "DEV_SECRET_KEY_CHANGE_IN_PRODUCTION")
 ALGORITHM = "HS256"
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer()
@@ -164,7 +164,7 @@ async def github_callback(code: str, state: Optional[str] = None, db: AsyncSessi
     if not access_token:
         raise HTTPException(status_code=400, detail="Failed to retrieve access token")
         
-    enc_key = os.getenv("GITHUB_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    enc_key = os.getenv("ENCRYPTION_KEY", Fernet.generate_key().decode())
     cipher = Fernet(enc_key.encode())
     encrypted_token = cipher.encrypt(access_token.encode()).decode()
     
@@ -298,7 +298,7 @@ async def _run_background_sync(evaluation_id: int):
         token = conn.access_token if conn else "mock_token"
         
         # If token is real, decrypt it
-        enc_key = os.getenv("GITHUB_ENCRYPTION_KEY")
+        enc_key = os.getenv("ENCRYPTION_KEY")
         sync_svc = GitHubSyncService(enc_key.encode() if enc_key else None)
         try:
             token = sync_svc.decrypt_token(token)

@@ -55,7 +55,7 @@ async def scheduled_active_sync():
             conn = conn_res.scalar_one_or_none()
             if conn:
                 try:
-                    enc_key = os.getenv("GITHUB_ENCRYPTION_KEY")
+                    enc_key = os.getenv("ENCRYPTION_KEY")
                     sync_svc = GitHubSyncService(enc_key.encode() if enc_key else None)
                     token = sync_svc.decrypt_token(conn.access_token)
                     await sync_svc.sync_evaluation(session, ev.id, token)
