@@ -27,7 +27,7 @@ export default function NewEvaluationPage() {
 
     try {
       // Get role profiles
-      const rpRes = await fetch("http://localhost:8000/role-profiles", {
+      const rpRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/role-profiles`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const roleProfiles = await rpRes.json();
@@ -45,7 +45,7 @@ export default function NewEvaluationPage() {
         role_profile_id: role_profile_id
       };
 
-      const res = await fetch("http://localhost:8000/evaluations", {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/evaluations`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

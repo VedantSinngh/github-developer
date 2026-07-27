@@ -17,7 +17,7 @@ export default function EvaluationDetailPage({ params }: { params: { id: string 
   const [status, setStatus] = useState<"active" | "locked">("locked");
 
   const { data: scoreData, error, isLoading } = useSWR(
-    `http://localhost:8000/evaluations/${params.id}/score`,
+    `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/evaluations/${params.id}/score`,
     fetcher,
     { refreshInterval: status === "active" ? 15000 : 0 } // Poll every 15s if active
   );
@@ -73,7 +73,7 @@ export default function EvaluationDetailPage({ params }: { params: { id: string 
           <div>
             {currentStatus === "locked" ? (
               <a
-                href={`http://localhost:8000/evaluations/${params.id}/report`}
+                href={`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/evaluations/${params.id}/report`}
                 target="_blank"
                 className="inline-flex h-10 items-center justify-center rounded-pill bg-primary px-5 text-button text-on-primary hover:bg-primary-active transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink"
               >
