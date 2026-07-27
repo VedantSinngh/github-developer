@@ -50,8 +50,8 @@ module.exports = {
         },
       },
       fontFamily: {
-        serif: ["'EB Garamond'", "'Times New Roman'", "serif"],
-        sans: ["Inter", "sans-serif"],
+        serif: ["var(--font-eb-garamond)", "'Times New Roman'", "serif"],
+        sans: ["var(--font-inter)", "Inter", "sans-serif"],
       },
       fontSize: {
         "display-mega": ["64px", { lineHeight: "1.05", letterSpacing: "-1.92px", fontWeight: "300" }],
