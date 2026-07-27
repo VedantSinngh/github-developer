@@ -196,7 +196,7 @@ def upgrade() -> None:
     op.create_index(op.f('ix_sync_logs_evaluation_id'), 'sync_logs', ['evaluation_id'], unique=False)
 
     # 12. Create PostgreSQL Trigger for score_breakdown immutability
-    trigger_sql = """
+    op.execute("""
     CREATE OR REPLACE FUNCTION check_score_breakdown_immutability()
     RETURNS TRIGGER AS $$
     DECLARE
@@ -218,15 +218,16 @@ def upgrade() -> None:
         END IF;
     END;
     $$ LANGUAGE plpgsql;
+    """)
 
-    DROP TRIGGER IF EXISTS enforce_score_breakdown_immutability ON score_breakdown;
+    op.execute("DROP TRIGGER IF EXISTS enforce_score_breakdown_immutability ON score_breakdown;")
 
+    op.execute("""
     CREATE TRIGGER enforce_score_breakdown_immutability
     BEFORE UPDATE OR DELETE ON score_breakdown
     FOR EACH ROW
     EXECUTE FUNCTION check_score_breakdown_immutability();
-    """
-    op.execute(trigger_sql)
+    """)
 
 
 def downgrade() -> None:
