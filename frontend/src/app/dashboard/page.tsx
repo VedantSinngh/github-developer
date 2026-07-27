@@ -39,43 +39,43 @@ export default function DashboardPage() {
     }, 1000);
   }, []);
 
-  const filtered = filter === "all" ? evaluations : evaluations.filter((e) => e.status === filter);
+  const filtered = filter === "all" ? evaluations : evaluations.filter((e: Evaluation) => e.status === filter);
 
   return (
-    <div className="min-h-screen bg-canvas text-ink p-12 font-sans relative overflow-hidden">
+    <div className="py-section bg-canvas text-ink font-sans relative overflow-hidden">
       {/* Background Atmosphere Orbs */}
-      <div className="absolute top-10 right-10 w-96 h-96 rounded-full gradient-orb-peach pointer-events-none opacity-50"></div>
-      <div className="absolute bottom-10 left-10 w-96 h-96 rounded-full gradient-orb-sky pointer-events-none opacity-50"></div>
+      <div className="absolute top-1/4 right-1/4 w-[600px] h-[600px] rounded-full gradient-orb-peach pointer-events-none opacity-40 mix-blend-multiply blur-3xl z-0"></div>
+      <div className="absolute bottom-1/4 left-1/4 w-[600px] h-[600px] rounded-full gradient-orb-sky pointer-events-none opacity-40 mix-blend-multiply blur-3xl z-0"></div>
 
-      <div className="max-w-6xl mx-auto space-y-12 relative z-10">
+      <div className="max-w-7xl mx-auto px-6 md:px-12 space-y-12 relative z-10">
         {/* Editorial Top Navigation */}
-        <header className="flex justify-between items-center border-b border-hairline pb-8">
-          <div>
-            <span className="text-[12px] uppercase tracking-[0.96px] font-semibold text-muted">
-              ElevenLabs Voice-AI Platform
+        <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 border-b border-hairline pb-8">
+          <div className="space-y-4">
+            <span className="text-caption-uppercase text-muted">
+              ElevenLabs Editorial Platform
             </span>
-            <h1 className="text-5xl font-serif font-light text-ink tracking-tight mt-1">
+            <h1 className="text-display-lg font-serif font-light text-ink tracking-tight mt-1">
               Evaluations Index
             </h1>
           </div>
           <a
             href="/evaluations/new"
-            className="px-6 py-3 bg-ink hover:bg-ink-primary text-on-primary rounded-pill text-xs font-semibold uppercase tracking-[0.96px] transition shadow-soft"
+            className="inline-flex h-10 items-center justify-center rounded-pill bg-primary px-5 text-button text-on-primary hover:bg-primary-active transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink"
           >
             + Create New Evaluation
           </a>
         </header>
 
         {/* Status Filter Pills */}
-        <div className="flex gap-3 border-b border-hairline-soft pb-4">
+        <div className="flex gap-3 border-b border-hairline-soft pb-4 overflow-x-auto">
           {["all", "pending", "active", "completed", "locked"].map((st) => (
             <button
               key={st}
               onClick={() => setFilter(st)}
-              className={`px-4 py-1.5 rounded-pill text-xs uppercase tracking-[0.96px] transition ${
+              className={`px-4 py-1.5 rounded-pill text-caption-uppercase transition-colors whitespace-nowrap ${
                 filter === st
-                  ? "bg-ink text-on-primary font-semibold"
-                  : "bg-surface-strong text-muted hover:text-ink"
+                  ? "bg-ink text-on-primary"
+                  : "bg-surface-strong text-muted hover:text-ink hover:bg-canvas-soft"
               }`}
             >
               {st}
@@ -93,30 +93,30 @@ export default function DashboardPage() {
             </div>
           ) : (
             <Table>
-              <TableHeader className="bg-canvas-soft text-[11px] uppercase tracking-[0.96px] text-muted">
+              <TableHeader className="bg-canvas-soft text-caption-uppercase text-muted border-b border-hairline">
                 <TableRow>
-                  <TableHead className="p-6 font-semibold">Candidate</TableHead>
-                  <TableHead className="p-6 font-semibold">Repository</TableHead>
-                  <TableHead className="p-6 font-semibold">Status</TableHead>
-                  <TableHead className="p-6 font-semibold">Final Score</TableHead>
-                  <TableHead className="p-6 text-right font-semibold">Action</TableHead>
+                  <TableHead className="p-6 font-medium">Candidate</TableHead>
+                  <TableHead className="p-6 font-medium">Repository</TableHead>
+                  <TableHead className="p-6 font-medium">Status</TableHead>
+                  <TableHead className="p-6 font-medium">Final Score</TableHead>
+                  <TableHead className="p-6 text-right font-medium">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody className="divide-y divide-hairline-soft">
-                {filtered.map((ev) => (
-                  <TableRow key={ev.id} className="hover:bg-canvas-soft/60 transition">
-                    <TableCell className="p-6 font-serif font-normal text-lg text-ink">{ev.candidate}</TableCell>
-                    <TableCell className="p-6 font-sans text-xs text-body font-mono">{ev.repo}</TableCell>
+                {filtered.map((ev: Evaluation) => (
+                  <TableRow key={ev.id} className="hover:bg-canvas-soft transition-colors">
+                    <TableCell className="p-6 font-serif font-light text-2xl text-ink tracking-tight">{ev.candidate}</TableCell>
+                    <TableCell className="p-6 text-body-sm text-body font-mono">{ev.repo}</TableCell>
                     <TableCell className="p-6">
                       <StatusBadge status={ev.status} />
                     </TableCell>
-                    <TableCell className="p-6 font-serif font-light text-2xl text-ink">
+                    <TableCell className="p-6 font-serif font-light text-3xl text-ink tracking-tight">
                       {ev.score !== null ? ev.score.toFixed(2) : "—"}
                     </TableCell>
                     <TableCell className="p-6 text-right">
                       <a
                         href={`/evaluations/${ev.id}`}
-                        className="text-xs font-semibold uppercase tracking-[0.96px] text-ink hover:underline"
+                        className="text-caption-uppercase text-ink hover:underline"
                       >
                         View Report →
                       </a>

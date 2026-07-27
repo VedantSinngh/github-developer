@@ -39,30 +39,30 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen bg-canvas flex items-center justify-center p-6 relative overflow-hidden font-sans">
-      <div className="absolute top-1/4 right-1/2 translate-x-1/2 w-96 h-96 rounded-full gradient-orb-peach pointer-events-none opacity-80"></div>
+    <div className="py-section bg-canvas flex items-center justify-center relative overflow-hidden font-sans">
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full gradient-orb-peach pointer-events-none opacity-40 mix-blend-multiply blur-3xl z-0"></div>
 
-      <div className="w-full max-w-md bg-surface-card border border-hairline rounded-xxl p-10 shadow-soft relative z-10 space-y-8">
-        <div className="text-center space-y-2">
-          <span className="text-[12px] uppercase tracking-[0.96px] font-semibold text-muted">
+      <div className="w-full max-w-md bg-surface-card border border-hairline rounded-xl p-10 shadow-soft relative z-10 space-y-8">
+        <div className="text-center space-y-4">
+          <span className="text-caption-uppercase text-muted">
             ElevenLabs Editorial Platform
           </span>
-          <h2 className="text-4xl font-serif font-light text-ink tracking-tight">
+          <h2 className="text-display-lg font-serif font-light text-ink tracking-tight">
             Register Org
           </h2>
-          <p className="text-xs text-body">Create a new recruiter account</p>
+          <p className="text-body-sm text-body">Create a new recruiter account</p>
         </div>
 
         {success ? (
-          <div className="text-green-600 text-center font-medium">
+          <div className="text-semantic-success text-center text-body-strong">
             Registration successful! Redirecting to login...
           </div>
         ) : (
-          <Form onSubmit={handleSubmit} className="space-y-5">
-            {error && <div className="text-red-500 text-sm font-medium text-center">{error}</div>}
+          <Form onSubmit={handleSubmit} className="space-y-6">
+            {error && <div className="text-semantic-error text-body-sm font-medium text-center">{error}</div>}
             
             <FormItem>
-              <FormLabel className="text-[12px] uppercase tracking-[0.96px] text-muted mb-1.5">Organization Name</FormLabel>
+              <FormLabel className="text-caption-uppercase text-muted mb-2 block">Organization Name</FormLabel>
               <FormControl>
                 <Input
                   type="text"
@@ -75,7 +75,7 @@ export default function RegisterPage() {
             </FormItem>
 
             <FormItem>
-              <FormLabel className="text-[12px] uppercase tracking-[0.96px] text-muted mb-1.5">Email Address</FormLabel>
+              <FormLabel className="text-caption-uppercase text-muted mb-2 block">Email Address</FormLabel>
               <FormControl>
                 <Input
                   type="email"
@@ -88,7 +88,7 @@ export default function RegisterPage() {
             </FormItem>
 
             <FormItem>
-              <FormLabel className="text-[12px] uppercase tracking-[0.96px] text-muted mb-1.5">Password</FormLabel>
+              <FormLabel className="text-caption-uppercase text-muted mb-2 block">Password</FormLabel>
               <FormControl>
                 <Input
                   type="password"
@@ -99,15 +99,15 @@ export default function RegisterPage() {
               </FormControl>
             </FormItem>
 
-            <Button type="submit" className="w-full rounded-pill shadow-soft">
+            <Button type="submit" className="w-full">
               Register
             </Button>
           </Form>
         )}
 
-        <p className="text-xs text-center text-muted">
+        <p className="text-body-sm text-center text-muted">
           Already have an account?{" "}
-          <a href="/login" className="text-ink font-semibold hover:underline">
+          <a href="/login" className="text-ink font-medium hover:underline transition-colors">
             Sign In
           </a>
         </p>

@@ -30,9 +30,9 @@ export const ScoreRadarChart: React.FC<ScoreRadarChartProps> = ({ metrics }) => 
   return (
     <div className="bg-surface-card border border-hairline rounded-xl p-6 shadow-soft relative overflow-hidden">
       {/* Background Soft Atmospheric Gradient Orb */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 rounded-full gradient-orb-lavender pointer-events-none opacity-60"></div>
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 rounded-full gradient-orb-lavender pointer-events-none opacity-40 mix-blend-multiply blur-3xl"></div>
       
-      <h3 className="text-[12px] uppercase tracking-[0.96px] font-semibold text-muted mb-4 relative z-10">
+      <h3 className="text-caption-uppercase text-muted mb-4 relative z-10">
         Signal Performance Breakdown
       </h3>
       <div className="w-full h-72 relative z-10">

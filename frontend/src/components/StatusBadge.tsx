@@ -14,12 +14,12 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status }) => {
 
   return (
     <span
-      className={`inline-flex items-center px-3 py-1 rounded-pill text-[12px] uppercase tracking-[0.96px] font-semibold border ${
+      className={`inline-flex items-center px-3 py-1 rounded-pill text-caption-uppercase border transition-colors ${
         styles[status] || "bg-surface-strong text-body border-hairline"
       }`}
     >
       {status === "locked" && <span className="mr-1.5 text-[10px]">🔒</span>}
-      {status === "active" && <span className="w-1.5 h-1.5 rounded-full bg-ink mr-1.5"></span>}
+      {status === "active" && <span className="w-1.5 h-1.5 rounded-full bg-ink mr-1.5 animate-pulse"></span>}
       {status}
     </span>
   );

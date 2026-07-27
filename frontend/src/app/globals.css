@@ -35,6 +35,10 @@
     --gradient-lavender: #c8b8e0;
     --gradient-sky: #a8c8e8;
     --gradient-rose: #e8b8c4;
+
+    /* Semantic */
+    --semantic-success: #16a34a;
+    --semantic-error: #dc2626;
   }
 
   body {
@@ -45,7 +49,7 @@
     -webkit-font-smoothing: antialiased;
   }
 
-  h1, h2, h3, .font-serif-display {
+  h1, h2, h3, h4, h5, h6, .font-serif-display {
     font-family: 'EB Garamond', 'Times New Roman', serif;
     font-weight: 300;
   }

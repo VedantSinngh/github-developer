@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 const fetcher = (url: string) => {
   const token = localStorage.getItem("token");
-  return fetch(url, { headers: { Authorization: `Bearer ${token}` } }).then(res => res.json());
+  return fetch(url, { headers: { Authorization: `Bearer ${token}` } }).then((res: Response) => res.json());
 };
 
 export default function EvaluationDetailPage({ params }: { params: { id: string } }) {
@@ -44,29 +44,29 @@ export default function EvaluationDetailPage({ params }: { params: { id: string 
   const finalScore = scoreData?.final_score ?? null;
 
   return (
-    <div className="min-h-screen bg-canvas text-ink p-12 font-sans relative overflow-hidden">
+    <div className="py-section px-6 md:px-12 bg-canvas text-ink font-sans relative overflow-hidden">
       {/* Background Orbs */}
-      <div className="absolute top-12 left-10 w-96 h-96 rounded-full gradient-orb-mint pointer-events-none opacity-40"></div>
-      <div className="absolute bottom-10 right-10 w-96 h-96 rounded-full gradient-orb-rose pointer-events-none opacity-40"></div>
+      <div className="absolute top-1/4 left-1/4 w-[600px] h-[600px] rounded-full gradient-orb-mint pointer-events-none opacity-40 mix-blend-multiply blur-3xl z-0"></div>
+      <div className="absolute bottom-1/4 right-1/4 w-[600px] h-[600px] rounded-full gradient-orb-rose pointer-events-none opacity-40 mix-blend-multiply blur-3xl z-0"></div>
 
-      <div className="max-w-6xl mx-auto space-y-12 relative z-10">
+      <div className="max-w-7xl mx-auto space-y-12 relative z-10">
         {/* Editorial Navigation Header */}
-        <div className="flex justify-between items-start border-b border-hairline pb-8">
+        <div className="flex flex-col md:flex-row justify-between items-start border-b border-hairline pb-8 gap-6">
           <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-5xl font-serif font-light text-ink tracking-tight">Jane Doe</h1>
+            <div className="flex items-center gap-4">
+              <h1 className="text-display-xl font-serif font-light text-ink tracking-tight">Jane Doe</h1>
               <StatusBadge status={currentStatus} />
               <button
                 onClick={() => setStatus(status === "active" ? "locked" : "active")}
-                className="text-[11px] text-muted underline ml-2 uppercase tracking-[0.96px]"
+                className="text-caption-uppercase text-muted underline ml-2 hover:text-ink transition-colors"
               >
                 (Mock Toggle: {currentStatus})
               </button>
             </div>
-            <p className="text-body text-sm mt-2">
+            <p className="text-body-sm text-body mt-4">
               Repository: <span className="font-mono text-ink font-medium">acme/takehome-backend</span>
             </p>
-            <p className="text-xs text-muted mt-1">
+            <p className="text-caption text-muted mt-1">
               Evaluation Window: July 1, 2026 – July 10, 2026 (Window-bounded sync)
             </p>
           </div>
@@ -75,12 +75,12 @@ export default function EvaluationDetailPage({ params }: { params: { id: string 
               <a
                 href={`http://localhost:8000/evaluations/${params.id}/report`}
                 target="_blank"
-                className="px-6 py-3 bg-ink hover:bg-ink-primary text-on-primary rounded-pill text-xs font-semibold uppercase tracking-[0.96px] transition shadow-soft"
+                className="inline-flex h-10 items-center justify-center rounded-pill bg-primary px-5 text-button text-on-primary hover:bg-primary-active transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink"
               >
                 Download Report Card (PDF)
               </a>
             ) : (
-              <span className="text-xs text-ink font-medium uppercase tracking-[0.96px] flex items-center gap-2">
+              <span className="text-caption-uppercase text-ink font-medium flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-ink animate-ping"></span> Live Background Syncing
               </span>
             )}
@@ -93,14 +93,14 @@ export default function EvaluationDetailPage({ params }: { params: { id: string 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               <div className="bg-surface-card border border-hairline rounded-xl p-8 shadow-soft flex flex-col justify-between">
                 <div>
-                  <span className="text-[12px] uppercase tracking-[0.96px] font-semibold text-muted">
+                  <span className="text-caption-uppercase text-muted">
                     In-Progress Live Score
                   </span>
-                  <div className="text-6xl font-serif font-light text-ink tracking-tight mt-3">
+                  <div className="text-display-xl font-serif font-light text-ink tracking-tight mt-4">
                     {isLoading ? <Skeleton className="h-16 w-32" /> : (finalScore !== null ? finalScore.toFixed(2) : "—")}
                   </div>
                 </div>
-                <p className="text-xs text-muted mt-6">
+                <p className="text-caption text-muted mt-6">
                   Polling every 15s. Rate-limit-safe GraphQL worker running in background.
                 </p>
               </div>
@@ -110,11 +110,11 @@ export default function EvaluationDetailPage({ params }: { params: { id: string 
               </div>
             </div>
 
-            <div className="bg-surface-card border border-hairline rounded-xl p-6 space-y-3 shadow-soft">
-              <h4 className="text-[12px] uppercase tracking-[0.96px] font-semibold text-muted">
+            <div className="bg-surface-card border border-hairline rounded-xl p-6 space-y-4 shadow-soft">
+              <h4 className="text-caption-uppercase text-muted">
                 Live Activity Ticker
               </h4>
-              <ul className="text-xs text-body space-y-2 font-mono">
+              <ul className="text-body-sm text-body space-y-3 font-mono">
                 <li>• [2026-07-27 04:12] Commit: Add GraphQL query pagination support (+45/-12)</li>
                 <li>• [2026-07-27 03:50] Opened PR #4: Implement scoring engine functional core</li>
               </ul>
@@ -128,15 +128,15 @@ export default function EvaluationDetailPage({ params }: { params: { id: string 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               <div className="bg-surface-dark text-on-dark rounded-xxl p-8 shadow-2xl flex flex-col justify-between relative overflow-hidden">
                 <div>
-                  <span className="text-[12px] uppercase tracking-[0.96px] font-semibold text-on-dark-soft">
+                  <span className="text-caption-uppercase text-on-dark-soft">
                     Final Weighted Score
                   </span>
-                  <div className="text-7xl font-serif font-light text-on-dark tracking-tight mt-4">
+                  <div className="text-display-mega font-serif font-light text-on-dark tracking-tight mt-6">
                     {isLoading ? <Skeleton className="h-20 w-32 bg-on-dark-soft/20" /> : (finalScore !== null ? finalScore.toFixed(2) : "—")}
                   </div>
                 </div>
-                <div className="text-xs text-on-dark-soft mt-8 flex items-center gap-1.5 font-sans">
-                  ✓ Score locked into immutable PostgreSQL ledger
+                <div className="text-body-sm text-on-dark-soft mt-8 flex items-center gap-2 font-sans">
+                  <span className="text-semantic-success">✓</span> Score locked into immutable PostgreSQL ledger
                 </div>
               </div>
 
@@ -154,11 +154,11 @@ export default function EvaluationDetailPage({ params }: { params: { id: string 
             </div>
 
             {/* Flagged Audit Callouts */}
-            <div className="bg-surface-card border border-hairline rounded-xl p-8 shadow-soft space-y-4">
-              <h3 className="text-[12px] uppercase tracking-[0.96px] font-semibold text-muted">
+            <div className="bg-surface-card border border-hairline rounded-xl p-8 shadow-soft space-y-6">
+              <h3 className="text-caption-uppercase text-muted">
                 Auditable Scoring Callouts & Risk Flags
               </h3>
-              <ul className="space-y-3 text-sm text-body">
+              <ul className="space-y-4 text-body-md text-body">
                 <li className="flex items-center gap-3">
                   <span className="text-ink font-semibold">✓</span> High consistency: Candidate active 8 out of 10 evaluation window days.
                 </li>

@@ -13,14 +13,14 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       <button
         ref={ref}
         className={cn(
-          "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
+          "inline-flex items-center justify-center whitespace-nowrap text-button transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink disabled:pointer-events-none disabled:opacity-50",
           {
-            "bg-[#0c0a09] text-white shadow hover:bg-[#0c0a09]/90": variant === "default",
-            "border border-input bg-transparent shadow-sm hover:bg-accent hover:text-accent-foreground": variant === "outline",
-            "hover:bg-accent hover:text-accent-foreground": variant === "ghost",
-            "h-9 px-4 py-2": size === "default",
-            "h-8 rounded-md px-3 text-xs": size === "sm",
-            "h-10 rounded-md px-8": size === "lg",
+            "bg-primary text-on-primary rounded-pill hover:bg-primary-active": variant === "default",
+            "border border-hairline-strong bg-transparent text-ink rounded-pill hover:bg-canvas-soft": variant === "outline",
+            "hover:bg-canvas-soft text-ink rounded-pill": variant === "ghost",
+            "h-10 px-5 py-2.5": size === "default",
+            "h-8 rounded-pill px-3 text-caption": size === "sm",
+            "h-12 rounded-pill px-8 text-title-sm": size === "lg",
           },
           className
         )}
