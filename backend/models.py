@@ -68,28 +68,119 @@ class RoleProfile(Base):
     evaluations: Mapped[List["Evaluation"]] = relationship("Evaluation", back_populates="role_profile")
 
 
+class CandidateStatus(str, enum.Enum):
+    AVAILABLE = "available"
+    IN_COHORT = "in_cohort"
+    ARCHIVED = "archived"
+
+
+class Candidate(Base):
+    __tablename__ = "candidates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    github_username: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[CandidateStatus] = mapped_column(
+        Enum(CandidateStatus, name="candidate_status_enum", values_callable=lambda x: [e.value for e in x]),
+        nullable=False,
+        default=CandidateStatus.AVAILABLE,
+        server_default=CandidateStatus.AVAILABLE.value,
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    cohort_links: Mapped[List["CohortCandidate"]] = relationship("CohortCandidate", back_populates="candidate")
+    evaluations: Mapped[List["Evaluation"]] = relationship("Evaluation", back_populates="candidate")
+
+
+class RepoTemplate(Base):
+    __tablename__ = "repo_templates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    role_level: Mapped[str] = mapped_column(String(100), nullable=False)
+    tech_stack: Mapped[str] = mapped_column(String(100), nullable=False)
+    template_repo_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    seeded_issues_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    cohorts: Mapped[List["Cohort"]] = relationship("Cohort", back_populates="repo_template")
+
+
+class Cohort(Base):
+    __tablename__ = "cohorts"
+    __table_args__ = (
+        CheckConstraint("end_date > start_date", name="check_cohorts_end_after_start"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    role_level: Mapped[str] = mapped_column(String(100), nullable=False)
+    tech_stack: Mapped[str] = mapped_column(String(100), nullable=False)
+    
+    start_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    end_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    
+    created_by: Mapped[int] = mapped_column(
+        Integer, ForeignKey("recruiters.id", ondelete="CASCADE"), nullable=False
+    )
+    role_profile_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("role_profiles.id", ondelete="SET NULL"), nullable=True
+    )
+    repo_template_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("repo_templates.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    is_rubric_locked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="false")
+    
+    recruiter: Mapped["Recruiter"] = relationship("Recruiter")
+    role_profile: Mapped[Optional["RoleProfile"]] = relationship("RoleProfile")
+    repo_template: Mapped[Optional["RepoTemplate"]] = relationship("RepoTemplate", back_populates="cohorts")
+    candidates: Mapped[List["CohortCandidate"]] = relationship(
+        "CohortCandidate", back_populates="cohort", cascade="all, delete-orphan"
+    )
+    evaluations: Mapped[List["Evaluation"]] = relationship(
+        "Evaluation", back_populates="cohort", cascade="all, delete-orphan"
+    )
+
+
+class CohortCandidate(Base):
+    __tablename__ = "cohort_candidates"
+    __table_args__ = (
+        UniqueConstraint("cohort_id", "candidate_id", name="uq_cohort_candidate"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    cohort_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("cohorts.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    candidate_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("candidates.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    
+    cohort: Mapped["Cohort"] = relationship("Cohort", back_populates="candidates")
+    candidate: Mapped["Candidate"] = relationship("Candidate", back_populates="cohort_links")
+
+
 class Evaluation(Base):
     __tablename__ = "evaluations"
-    __table_args__ = (
-        CheckConstraint("end_date > start_date", name="check_evaluations_end_after_start"),
-    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     recruiter_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("recruiters.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    role_profile_id: Mapped[Optional[int]] = mapped_column(
-        Integer, ForeignKey("role_profiles.id", ondelete="SET NULL"), nullable=True
+    cohort_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("cohorts.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    candidate_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("candidates.id", ondelete="CASCADE"), nullable=False, index=True
     )
 
-    candidate_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    candidate_email: Mapped[str] = mapped_column(String(255), nullable=False)
-    github_username: Mapped[str] = mapped_column(String(255), nullable=False)
     repo_owner: Mapped[str] = mapped_column(String(255), nullable=False)
     repo_name: Mapped[str] = mapped_column(String(255), nullable=False)
-
-    start_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    end_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     status: Mapped[EvaluationStatus] = mapped_column(
         Enum(EvaluationStatus, name="evaluation_status_enum", values_callable=lambda x: [e.value for e in x]),
@@ -109,7 +200,9 @@ class Evaluation(Base):
     locked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     recruiter: Mapped["Recruiter"] = relationship("Recruiter", back_populates="evaluations")
-    role_profile: Mapped[Optional["RoleProfile"]] = relationship("RoleProfile", back_populates="evaluations")
+    cohort: Mapped["Cohort"] = relationship("Cohort", back_populates="evaluations")
+    candidate: Mapped["Candidate"] = relationship("Candidate", back_populates="evaluations")
+    
     github_connection: Mapped[Optional["GitHubConnection"]] = relationship(
         "GitHubConnection", back_populates="evaluation", uselist=False, cascade="all, delete-orphan"
     )

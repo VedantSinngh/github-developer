@@ -11,8 +11,9 @@ from typing import Dict, List, Optional
 import os
 import httpx
 from cryptography.fernet import Fernet
+import csv
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status, BackgroundTasks, File, UploadFile
 from fastapi.responses import StreamingResponse, RedirectResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
@@ -34,6 +35,11 @@ from models import (
     Recruiter,
     RoleProfile,
     ScoreBreakdown,
+    Candidate,
+    CandidateStatus,
+    RepoTemplate,
+    Cohort,
+    CohortCandidate,
 )
 from schemas import (
     EvaluationCreateRequest,
@@ -46,6 +52,12 @@ from schemas import (
     ScoreResponse,
     TimelineItem,
     TokenResponse,
+    CandidateCreateRequest,
+    CandidateResponse,
+    CohortCreateRequest,
+    CohortResponse,
+    RepoTemplateCreateRequest,
+    RepoTemplateResponse,
 )
 from scoring_engine import compute_final_score, persist_score
 from sync_service import GitHubSyncService
@@ -232,30 +244,229 @@ async def list_role_profiles(
     return res.scalars().all()
 
 
-# Evaluation Endpoints
+# Candidate Endpoints
 @router.post(
-    "/evaluations",
-    response_model=EvaluationResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="Create a candidate evaluation",
+    "/candidates/bulk-upload",
+    response_model=List[CandidateResponse],
+    summary="Bulk upload candidates via CSV",
 )
-async def create_evaluation(
-    req: EvaluationCreateRequest,
+async def bulk_upload_candidates(
+    file: UploadFile = File(...),
     current_user: Recruiter = Depends(get_current_recruiter),
     db: AsyncSession = Depends(get_db),
 ):
-    if req.end_date <= req.start_date:
-        raise HTTPException(status_code=400, detail="end_date must be strictly after start_date")
+    content = await file.read()
+    decoded = content.decode("utf-8")
+    csv_reader = csv.DictReader(io.StringIO(decoded))
+    
+    candidates = []
+    async with httpx.AsyncClient() as client:
+        for row in csv_reader:
+            username = row.get("github_username", "").strip()
+            if not username:
+                continue
+            
+            # Validate GitHub username
+            resp = await client.get(f"https://api.github.com/users/{username}")
+            if resp.status_code != 200:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Invalid GitHub username: {username}"
+                )
+            
+            # Check if exists
+            res = await db.execute(select(Candidate).where(Candidate.email == row.get("email")))
+            if res.scalar_one_or_none():
+                continue
+            
+            cand = Candidate(
+                name=row.get("name", ""),
+                email=row.get("email", ""),
+                github_username=username,
+            )
+            db.add(cand)
+            candidates.append(cand)
+    
+    if candidates:
+        await db.commit()
+        for c in candidates:
+            await db.refresh(c)
+            
+    return candidates
 
-    evaluation = Evaluation(
-        recruiter_id=current_user.id,
-        status=EvaluationStatus.PENDING,
-        **req.model_dump(),
+
+# Cohort Endpoints
+@router.post(
+    "/cohorts",
+    response_model=CohortResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a new cohort",
+)
+async def create_cohort(
+    req: CohortCreateRequest,
+    current_user: Recruiter = Depends(get_current_recruiter),
+    db: AsyncSession = Depends(get_db),
+):
+    cohort = Cohort(
+        name=req.name,
+        role_level=req.role_level,
+        tech_stack=req.tech_stack,
+        start_date=req.start_date,
+        end_date=req.end_date,
+        created_by=current_user.id,
+        role_profile_id=req.role_profile_id,
+        repo_template_id=req.repo_template_id,
     )
-    db.add(evaluation)
+    db.add(cohort)
     await db.commit()
-    await db.refresh(evaluation)
-    return evaluation
+    await db.refresh(cohort)
+    
+    for c_id in req.candidate_ids:
+        cc = CohortCandidate(cohort_id=cohort.id, candidate_id=c_id)
+        db.add(cc)
+        
+    await db.commit()
+    await db.refresh(cohort)
+    return cohort
+
+
+async def _run_cohort_start_background(cohort_id: int, current_user_id: int):
+    # Fork repos and start evaluations
+    from main import async_session
+    async with async_session() as session:
+        # Fetch cohort, template, and candidates
+        res = await session.execute(select(Cohort).where(Cohort.id == cohort_id))
+        cohort = res.scalar_one_or_none()
+        if not cohort or not cohort.repo_template_id:
+            return
+            
+        tpl_res = await session.execute(select(RepoTemplate).where(RepoTemplate.id == cohort.repo_template_id))
+        template = tpl_res.scalar_one_or_none()
+        if not template:
+            return
+        
+        cc_res = await session.execute(select(CohortCandidate).where(CohortCandidate.cohort_id == cohort.id))
+        cohort_candidates = cc_res.scalars().all()
+        
+        # Get recruiter's github token
+        conn_res = await session.execute(
+            select(GitHubConnection).where(
+                GitHubConnection.evaluation_id.in_(
+                    select(Evaluation.id).where(Evaluation.recruiter_id == current_user_id)
+                )
+            ).limit(1)
+        )
+        conn = conn_res.scalar_one_or_none()
+        token = None
+        if conn:
+            enc_key = os.getenv("ENCRYPTION_KEY")
+            sync_svc = GitHubSyncService(enc_key.encode() if enc_key else None)
+            try:
+                token = sync_svc.decrypt_token(conn.access_token)
+            except Exception:
+                token = conn.access_token
+
+        # Parse template url
+        # e.g. https://github.com/owner/repo
+        parts = template.template_repo_url.strip("/").split("/")
+        if len(parts) >= 2:
+            template_owner = parts[-2]
+            template_repo = parts[-1]
+        else:
+            template_owner = "unknown"
+            template_repo = "unknown"
+
+        async with httpx.AsyncClient() as client:
+            headers = {
+                "Accept": "application/vnd.github.v3+json",
+                "User-Agent": "Candidate-Evaluation-Platform"
+            }
+            if token:
+                headers["Authorization"] = f"token {token}"
+                
+                # Get authenticated user's login to use as owner of new repos
+                user_res = await client.get("https://api.github.com/user", headers=headers)
+                if user_res.status_code == 200:
+                    auth_owner = user_res.json().get("login")
+                else:
+                    auth_owner = template_owner
+            else:
+                auth_owner = template_owner
+        
+            for cc in cohort_candidates:
+                cand_res = await session.execute(select(Candidate).where(Candidate.id == cc.candidate_id))
+                cand = cand_res.scalar_one_or_none()
+                if not cand:
+                    continue
+                    
+                new_repo_name = f"{template_repo}-{cand.github_username}-{cohort.id}"
+                
+                # Create repo from template if token available
+                if token:
+                    gen_res = await client.post(
+                        f"https://api.github.com/repos/{template_owner}/{template_repo}/generate",
+                        headers=headers,
+                        json={
+                            "owner": auth_owner,
+                            "name": new_repo_name,
+                            "private": True
+                        }
+                    )
+                    
+                    if gen_res.status_code in (200, 201):
+                        # Invite candidate
+                        await client.put(
+                            f"https://api.github.com/repos/{auth_owner}/{new_repo_name}/collaborators/{cand.github_username}",
+                            headers=headers,
+                            json={"permission": "write"}
+                        )
+                    else:
+                        # Fallback to cand's username if generation failed
+                        auth_owner = cand.github_username
+                        new_repo_name = template_repo
+                else:
+                    # Mock behavior if no token
+                    auth_owner = cand.github_username
+                    new_repo_name = template_repo
+                    
+                eval_record = Evaluation(
+                    recruiter_id=current_user_id,
+                    cohort_id=cohort.id,
+                    candidate_id=cand.id,
+                    repo_owner=auth_owner,
+                    repo_name=new_repo_name,
+                    status=EvaluationStatus.ACTIVE
+                )
+                session.add(eval_record)
+                
+                cand.status = CandidateStatus.IN_COHORT
+                
+        cohort.is_rubric_locked = True
+        await session.commit()
+
+
+@router.post(
+    "/cohorts/{id}/start",
+    summary="Start a cohort (forks repos)",
+)
+async def start_cohort(
+    id: int,
+    background_tasks: BackgroundTasks,
+    current_user: Recruiter = Depends(get_current_recruiter),
+    db: AsyncSession = Depends(get_db),
+):
+    res = await db.execute(
+        select(Cohort).where(Cohort.id == id, Cohort.created_by == current_user.id)
+    )
+    cohort = res.scalar_one_or_none()
+    if not cohort:
+        raise HTTPException(status_code=404, detail="Cohort not found")
+        
+    if cohort.is_rubric_locked:
+        raise HTTPException(status_code=400, detail="Cohort has already been started")
+        
+    background_tasks.add_task(_run_cohort_start_background, id, current_user.id)
+    return {"status": "success", "message": "Cohort started. Repos are being forked in the background."}
 
 
 @router.get(
@@ -650,3 +861,161 @@ async def generate_report(
         media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename=report_card_eval_{id}.pdf"},
     )
+
+
+# Cohort Hiring Team Views
+
+@router.get(
+    "/cohorts/{id}/leaderboard",
+    summary="Get cohort leaderboard",
+)
+async def get_cohort_leaderboard(
+    id: int,
+    current_user: Recruiter = Depends(get_current_recruiter),
+    db: AsyncSession = Depends(get_db),
+):
+    cohort_res = await db.execute(
+        select(Cohort).where(Cohort.id == id, Cohort.created_by == current_user.id)
+    )
+    if not cohort_res.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Cohort not found")
+
+    evals_res = await db.execute(
+        select(Evaluation).where(Evaluation.cohort_id == id)
+    )
+    evals = evals_res.scalars().all()
+    
+    leaderboard = []
+    for ev in evals:
+        cand_res = await db.execute(select(Candidate).where(Candidate.id == ev.candidate_id))
+        cand = cand_res.scalar_one()
+        leaderboard.append({
+            "candidate_id": cand.id,
+            "name": cand.name,
+            "email": cand.email,
+            "github_username": cand.github_username,
+            "status": ev.status,
+            "final_score": float(ev.final_score) if ev.final_score else None
+        })
+        
+    leaderboard.sort(key=lambda x: (x["final_score"] is None, -(x["final_score"] or 0)))
+    return {"leaderboard": leaderboard}
+
+
+@router.get(
+    "/cohorts/{id}/candidates/{candidate_id}/report",
+    summary="Get detailed report card for a candidate in a cohort",
+)
+async def get_candidate_report(
+    id: int,
+    candidate_id: int,
+    current_user: Recruiter = Depends(get_current_recruiter),
+    db: AsyncSession = Depends(get_db),
+):
+    cohort_res = await db.execute(
+        select(Cohort).where(Cohort.id == id, Cohort.created_by == current_user.id)
+    )
+    if not cohort_res.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Cohort not found")
+
+    eval_res = await db.execute(
+        select(Evaluation).where(Evaluation.cohort_id == id, Evaluation.candidate_id == candidate_id)
+    )
+    ev = eval_res.scalar_one_or_none()
+    if not ev:
+        raise HTTPException(status_code=404, detail="Evaluation for candidate not found in cohort")
+
+    sb_res = await db.execute(
+        select(ScoreBreakdown).where(ScoreBreakdown.evaluation_id == ev.id)
+    )
+    breakdowns = sb_res.scalars().all()
+    metrics = {
+        b.metric_name: {
+            "raw": float(b.raw_value),
+            "normalized": float(b.normalized_score),
+            "weight": float(b.weight),
+        }
+        for b in breakdowns
+    }
+
+    return {
+        "evaluation_id": ev.id,
+        "status": ev.status.value,
+        "final_score": float(ev.final_score) if ev.final_score else None,
+        "metrics": metrics
+    }
+
+
+@router.get(
+    "/cohorts/{id}/compare",
+    summary="Compare multiple candidates side-by-side",
+)
+async def compare_candidates(
+    id: int,
+    candidates: str = Query(..., description="Comma-separated candidate IDs"),
+    current_user: Recruiter = Depends(get_current_recruiter),
+    db: AsyncSession = Depends(get_db),
+):
+    candidate_ids = [int(c) for c in candidates.split(',')]
+    
+    cohort_res = await db.execute(
+        select(Cohort).where(Cohort.id == id, Cohort.created_by == current_user.id)
+    )
+    if not cohort_res.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Cohort not found")
+
+    evals_res = await db.execute(
+        select(Evaluation).where(Evaluation.cohort_id == id, Evaluation.candidate_id.in_(candidate_ids))
+    )
+    evals = evals_res.scalars().all()
+    
+    comparison = {}
+    for ev in evals:
+        sb_res = await db.execute(
+            select(ScoreBreakdown).where(ScoreBreakdown.evaluation_id == ev.id)
+        )
+        breakdowns = sb_res.scalars().all()
+        metrics = {
+            b.metric_name: float(b.normalized_score) for b in breakdowns
+        }
+        comparison[ev.candidate_id] = {
+            "final_score": float(ev.final_score) if ev.final_score else None,
+            "metrics": metrics
+        }
+        
+    return comparison
+
+
+@router.get(
+    "/cohorts/{id}/candidates/{candidate_id}/evidence",
+    summary="Get underlying PRs and commits as evidence",
+)
+async def get_candidate_evidence(
+    id: int,
+    candidate_id: int,
+    current_user: Recruiter = Depends(get_current_recruiter),
+    db: AsyncSession = Depends(get_db),
+):
+    cohort_res = await db.execute(
+        select(Cohort).where(Cohort.id == id, Cohort.created_by == current_user.id)
+    )
+    if not cohort_res.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Cohort not found")
+
+    eval_res = await db.execute(
+        select(Evaluation).where(Evaluation.cohort_id == id, Evaluation.candidate_id == candidate_id)
+    )
+    ev = eval_res.scalar_one_or_none()
+    if not ev:
+        raise HTTPException(status_code=404, detail="Evaluation not found")
+
+    prs_res = await db.execute(select(PullRequest).where(PullRequest.evaluation_id == ev.id))
+    prs = prs_res.scalars().all()
+    
+    commits_res = await db.execute(select(Commit).where(Commit.evaluation_id == ev.id))
+    commits = commits_res.scalars().all()
+    
+    return {
+        "prs": [{"id": pr.id, "title": pr.title, "url": pr.html_url, "merged_at": pr.merged_at} for pr in prs],
+        "commits": [{"id": c.id, "message": c.message, "url": c.html_url, "date": c.committed_at} for c in commits]
+    }

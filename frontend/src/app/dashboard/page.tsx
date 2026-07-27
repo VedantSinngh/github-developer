@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { StatusBadge } from "@/components/StatusBadge";
 import {
   Table,
   TableHeader,
@@ -12,18 +11,18 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 
-type Evaluation = {
+type Cohort = {
   id: number;
-  candidate: string;
-  repo: string;
-  status: string;
-  score: number | null;
+  name: string;
+  role_level: string;
+  tech_stack: string;
+  start_date: string;
+  end_date: string;
+  is_rubric_locked: boolean;
 };
 
 export default function DashboardPage() {
-  const [filter, setFilter] = useState<string>("all");
-
-  const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
+  const [cohorts, setCohorts] = useState<Cohort[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -34,28 +33,19 @@ export default function DashboardPage() {
     }
 
     const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-    fetch(`${API_URL}/evaluations`, {
+    fetch(`${API_URL}/cohorts`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((res) => {
-        if (!res.ok) throw new Error("Failed to fetch evaluations");
+        if (!res.ok) throw new Error("Failed to fetch cohorts");
         return res.json();
       })
       .then((data) => {
-        const mapped = data.map((item: any) => ({
-          id: item.id,
-          candidate: item.candidate_name,
-          repo: `${item.repo_owner}/${item.repo_name}`,
-          status: item.status,
-          score: item.final_score ? parseFloat(item.final_score) : null,
-        }));
-        setEvaluations(mapped);
+        setCohorts(data);
       })
-      .catch((err) => console.error("Error fetching evaluations:", err))
+      .catch((err) => console.error("Error fetching cohorts:", err))
       .finally(() => setLoading(false));
   }, []);
-
-  const filtered = filter === "all" ? evaluations : evaluations.filter((e: Evaluation) => e.status === filter);
 
   return (
     <div className="py-section bg-canvas text-ink font-sans relative overflow-hidden">
@@ -71,33 +61,16 @@ export default function DashboardPage() {
               ElevenLabs Editorial Platform
             </span>
             <h1 className="text-display-lg font-serif font-light text-ink tracking-tight mt-1">
-              Evaluations Index
+              Cohorts Index
             </h1>
           </div>
           <a
-            href="/evaluations/new"
+            href="/cohorts/new"
             className="inline-flex h-10 items-center justify-center rounded-pill bg-primary px-5 text-button text-on-primary hover:bg-primary-active transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink"
           >
-            + Create New Evaluation
+            + Create New Cohort
           </a>
         </header>
-
-        {/* Status Filter Pills */}
-        <div className="flex gap-3 border-b border-hairline-soft pb-4 overflow-x-auto">
-          {["all", "pending", "active", "completed", "locked"].map((st) => (
-            <button
-              key={st}
-              onClick={() => setFilter(st)}
-              className={`px-4 py-1.5 rounded-pill text-caption-uppercase transition-colors whitespace-nowrap ${
-                filter === st
-                  ? "bg-ink text-on-primary"
-                  : "bg-surface-strong text-muted hover:text-ink hover:bg-canvas-soft"
-              }`}
-            >
-              {st}
-            </button>
-          ))}
-        </div>
 
         {/* Minimalist Editorial Table */}
         <div className="bg-surface-card border border-hairline rounded-xl shadow-soft">
@@ -111,34 +84,41 @@ export default function DashboardPage() {
             <Table>
               <TableHeader className="bg-canvas-soft text-caption-uppercase text-muted border-b border-hairline">
                 <TableRow>
-                  <TableHead className="p-6 font-medium">Candidate</TableHead>
-                  <TableHead className="p-6 font-medium">Repository</TableHead>
+                  <TableHead className="p-6 font-medium">Cohort Name</TableHead>
+                  <TableHead className="p-6 font-medium">Role & Stack</TableHead>
                   <TableHead className="p-6 font-medium">Status</TableHead>
-                  <TableHead className="p-6 font-medium">Final Score</TableHead>
                   <TableHead className="p-6 text-right font-medium">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody className="divide-y divide-hairline-soft">
-                {filtered.map((ev: Evaluation) => (
-                  <TableRow key={ev.id} className="hover:bg-canvas-soft transition-colors">
-                    <TableCell className="p-6 font-serif font-light text-2xl text-ink tracking-tight">{ev.candidate}</TableCell>
-                    <TableCell className="p-6 text-body-sm text-body font-mono">{ev.repo}</TableCell>
-                    <TableCell className="p-6">
-                      <StatusBadge status={ev.status} />
-                    </TableCell>
-                    <TableCell className="p-6 font-serif font-light text-3xl text-ink tracking-tight">
-                      {ev.score !== null ? ev.score.toFixed(2) : "—"}
+                {cohorts.map((cohort: Cohort) => (
+                  <TableRow key={cohort.id} className="hover:bg-canvas-soft transition-colors">
+                    <TableCell className="p-6 font-serif font-light text-2xl text-ink tracking-tight">{cohort.name}</TableCell>
+                    <TableCell className="p-6 text-body-sm text-body font-mono">{cohort.role_level} - {cohort.tech_stack}</TableCell>
+                    <TableCell className="p-6 font-mono text-sm">
+                      {cohort.is_rubric_locked ? (
+                        <span className="text-green-600 bg-green-100 px-2 py-1 rounded">Started</span>
+                      ) : (
+                        <span className="text-yellow-600 bg-yellow-100 px-2 py-1 rounded">Pending</span>
+                      )}
                     </TableCell>
                     <TableCell className="p-6 text-right">
                       <a
-                        href={`/evaluations/${ev.id}`}
-                        className="text-caption-uppercase text-ink hover:underline"
+                        href={`/cohorts/${cohort.id}`}
+                        className="text-caption-uppercase text-ink hover:underline font-bold"
                       >
-                        View Report →
+                        View Dashboard →
                       </a>
                     </TableCell>
                   </TableRow>
                 ))}
+                {cohorts.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={4} className="p-6 text-center text-muted">
+                      No cohorts found. Create one to get started.
+                    </TableCell>
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
           )}

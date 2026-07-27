@@ -71,16 +71,32 @@ class RoleProfileResponse(BaseModel):
     weight_stability: Decimal
 
 
-# Evaluation Schemas
-class EvaluationCreateRequest(BaseModel):
-    candidate_name: str
-    candidate_email: EmailStr
+# Candidate Schemas
+class CandidateCreateRequest(BaseModel):
+    name: str
+    email: EmailStr
     github_username: str
-    repo_owner: str
-    repo_name: str
+
+class CandidateResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    name: str
+    email: str
+    github_username: str
+    status: str
+    created_at: datetime
+
+
+# Cohort Schemas
+class CohortCreateRequest(BaseModel):
+    name: str
+    role_level: str
+    tech_stack: str
     start_date: datetime
     end_date: datetime
     role_profile_id: Optional[int] = None
+    repo_template_id: Optional[int] = None
+    candidate_ids: List[int] = []
 
     @field_validator("end_date")
     def validate_end_after_start(cls, v, values):
@@ -89,20 +105,55 @@ class EvaluationCreateRequest(BaseModel):
             raise ValueError("end_date must be strictly after start_date")
         return v
 
+class CohortResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    name: str
+    role_level: str
+    tech_stack: str
+    start_date: datetime
+    end_date: datetime
+    created_by: int
+    role_profile_id: Optional[int] = None
+    repo_template_id: Optional[int] = None
+    created_at: datetime
+    is_rubric_locked: bool
+    candidates: List[CandidateResponse] = []
+
+
+# Template Schemas
+class RepoTemplateCreateRequest(BaseModel):
+    role_level: str
+    tech_stack: str
+    template_repo_url: str
+    seeded_issues_json: Optional[str] = None
+
+class RepoTemplateResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    role_level: str
+    tech_stack: str
+    template_repo_url: str
+    seeded_issues_json: Optional[str] = None
+
+
+# Evaluation Schemas
+class EvaluationCreateRequest(BaseModel):
+    cohort_id: int
+    candidate_id: int
+    repo_owner: str
+    repo_name: str
+
 
 class EvaluationResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
     recruiter_id: int
-    role_profile_id: Optional[int] = None
-    candidate_name: str
-    candidate_email: str
-    github_username: str
+    cohort_id: int
+    candidate_id: int
     repo_owner: str
     repo_name: str
-    start_date: datetime
-    end_date: datetime
     status: str
     final_score: Optional[Decimal] = None
     share_token: Optional[str] = None
