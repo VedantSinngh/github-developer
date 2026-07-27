@@ -46,9 +46,14 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint('id')
     )
 
-    # 3. Create evaluation status ENUM and evaluations table
-    evaluation_status_enum = postgresql.ENUM('pending', 'active', 'completed', 'locked', name='evaluation_status_enum')
-    evaluation_status_enum.create(op.get_bind(), checkfirst=True)
+    # 3. Create evaluation status ENUM safely and evaluations table
+    op.execute("""
+    DO $$ BEGIN
+        CREATE TYPE evaluation_status_enum AS ENUM ('pending', 'active', 'completed', 'locked');
+    EXCEPTION
+        WHEN duplicate_object THEN null;
+    END $$;
+    """)
 
     op.create_table(
         'evaluations',
@@ -62,7 +67,7 @@ def upgrade() -> None:
         sa.Column('repo_name', sa.String(length=255), nullable=False),
         sa.Column('start_date', sa.DateTime(timezone=True), nullable=False),
         sa.Column('end_date', sa.DateTime(timezone=True), nullable=False),
-        sa.Column('status', sa.Enum('pending', 'active', 'completed', 'locked', name='evaluation_status_enum'), server_default='pending', nullable=False),
+        sa.Column('status', sa.Enum('pending', 'active', 'completed', 'locked', name='evaluation_status_enum', create_type=False), server_default='pending', nullable=False),
         sa.Column('final_score', sa.Numeric(precision=5, scale=2), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
         sa.Column('locked_at', sa.DateTime(timezone=True), nullable=True),
