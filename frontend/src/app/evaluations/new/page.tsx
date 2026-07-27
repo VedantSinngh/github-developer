@@ -61,7 +61,12 @@ export default function NewEvaluationPage() {
 
       window.location.href = "/dashboard";
     } catch (err: unknown) {
-      setError((err as Error).message);
+      const msg = (err as Error).message || "Failed to submit request";
+      if (msg.includes("Failed to fetch") || msg.includes("NetworkError")) {
+        setError("Unable to connect to backend server. If the service is on Render free tier, it may be spinning up from a cold start (30-50s). Please wait a moment and try again.");
+      } else {
+        setError(msg);
+      }
     }
   };
 

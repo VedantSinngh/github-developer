@@ -89,6 +89,30 @@ async def lifespan(app: FastAPI):
     logger.info("Application shutdown complete.")
 
 
+def get_allowed_origins() -> list[str]:
+    raw_origins = os.getenv("ALLOWED_ORIGINS", "")
+    frontend_url = os.getenv("FRONTEND_URL", "https://github-developer-liard.vercel.app")
+
+    defaults = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "https://github-developer-liard.vercel.app",
+    ]
+
+    origins = set(defaults)
+    if frontend_url:
+        origins.add(frontend_url.strip().rstrip("/"))
+    if raw_origins:
+        for o in raw_origins.split(","):
+            if o.strip():
+                origins.add(o.strip().rstrip("/"))
+
+    return list(origins)
+
+
+allowed_origins = get_allowed_origins()
+logger.info(f"Configured CORS Allowed Origins: {allowed_origins}")
+
 app = FastAPI(
     title="Candidate Evaluation Platform API",
     version="1.0.0",
@@ -101,10 +125,10 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_headers=["Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With"],
 )
 
 
