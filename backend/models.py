@@ -211,6 +211,9 @@ class PullRequest(Base):
 
 class PRReviewer(Base):
     __tablename__ = "pr_reviewers"
+    __table_args__ = (
+        Index("idx_pr_reviewers_pr_reviewed", "pr_id", "reviewed_at"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     pr_id: Mapped[int] = mapped_column(
@@ -225,6 +228,9 @@ class PRReviewer(Base):
 
 class PRComment(Base):
     __tablename__ = "pr_comments"
+    __table_args__ = (
+        Index("idx_pr_comments_pr_created", "pr_id", "created_at"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     pr_id: Mapped[int] = mapped_column(

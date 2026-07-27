@@ -82,6 +82,13 @@ class EvaluationCreateRequest(BaseModel):
     end_date: datetime
     role_profile_id: Optional[int] = None
 
+    @field_validator("end_date")
+    def validate_end_after_start(cls, v, values):
+        start = values.data.get("start_date")
+        if start and v <= start:
+            raise ValueError("end_date must be strictly after start_date")
+        return v
+
 
 class EvaluationResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)

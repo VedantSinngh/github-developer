@@ -18,7 +18,7 @@ export const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({
     const match = activities.find((a) => a.date === dateStr);
     return {
       date: dateStr,
-      count: match ? match.count : Math.floor(Math.random() * 6),
+      count: match ? match.count : 0,
     };
   });
 

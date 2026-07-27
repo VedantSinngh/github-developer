@@ -305,16 +305,16 @@ async def _run_background_sync(evaluation_id: int):
             select(GitHubConnection).where(GitHubConnection.evaluation_id == evaluation_id)
         )
         conn = conn_res.scalar_one_or_none()
-        token = conn.access_token if conn else "mock_token"
-        
-        # If token is real, decrypt it
+        if not conn:
+            return
+
         enc_key = os.getenv("ENCRYPTION_KEY")
         sync_svc = GitHubSyncService(enc_key.encode() if enc_key else None)
         try:
-            token = sync_svc.decrypt_token(token)
+            token = sync_svc.decrypt_token(conn.access_token)
         except Exception:
-            pass # Probably a mock token or unencrypted during tests
-            
+            token = conn.access_token
+
         await sync_svc.sync_evaluation(session, evaluation_id, token)
 
 @router.post(
@@ -372,16 +372,26 @@ async def manual_sync_trigger(
     if not evaluation:
         raise HTTPException(status_code=404, detail="Evaluation not found")
 
-    sync_rate_tracker[id] = now_ts
-
     conn_res = await db.execute(
         select(GitHubConnection).where(GitHubConnection.evaluation_id == id)
     )
     conn = conn_res.scalar_one_or_none()
-    token = conn.access_token if conn else "mock_token"
+    if not conn:
+        raise HTTPException(
+            status_code=400,
+            detail="GitHub connection not established for this evaluation.",
+        )
 
-    sync_service = GitHubSyncService()
-    log = await sync_service.sync_evaluation(db, id, token)
+    sync_rate_tracker[id] = now_ts
+
+    enc_key = os.getenv("ENCRYPTION_KEY")
+    sync_svc = GitHubSyncService(enc_key.encode() if enc_key else None)
+    try:
+        token = sync_svc.decrypt_token(conn.access_token)
+    except Exception:
+        token = conn.access_token
+
+    log = await sync_svc.sync_evaluation(db, id, token)
     return {"status": "success", "message": "Manual sync completed", "log_id": log.id}
 
 
@@ -392,9 +402,17 @@ async def manual_sync_trigger(
 )
 async def get_timeline(
     id: int,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
     current_user: Recruiter = Depends(get_current_recruiter),
     db: AsyncSession = Depends(get_db),
 ):
+    eval_res = await db.execute(
+        select(Evaluation).where(Evaluation.id == id, Evaluation.recruiter_id == current_user.id)
+    )
+    if not eval_res.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Evaluation not found")
+
     commits_res = await db.execute(select(Commit).where(Commit.evaluation_id == id))
     commits = commits_res.scalars().all()
 
@@ -423,8 +441,8 @@ async def get_timeline(
             )
         )
 
-    timeline.sort(key=lambda x: x.timestamp)
-    return timeline
+    timeline.sort(key=lambda x: x.timestamp, reverse=True)
+    return timeline[skip : skip + limit]
 
 
 @router.get(

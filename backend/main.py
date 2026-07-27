@@ -46,27 +46,38 @@ async def scheduled_auto_lock():
 async def scheduled_active_sync():
     logger.info("Executing scheduled sync for all active evaluations...")
     async with async_session() as session:
-        stmt = select(Evaluation).where(Evaluation.status == EvaluationStatus.ACTIVE)
+        stmt = (
+            select(Evaluation, GitHubConnection)
+            .join(GitHubConnection, GitHubConnection.evaluation_id == Evaluation.id)
+            .where(Evaluation.status == EvaluationStatus.ACTIVE)
+        )
         res = await session.execute(stmt)
-        active_evals = res.scalars().all()
-        
-        for ev in active_evals:
-            conn_res = await session.execute(select(GitHubConnection).where(GitHubConnection.evaluation_id == ev.id))
-            conn = conn_res.scalar_one_or_none()
-            if conn:
-                try:
-                    enc_key = os.getenv("ENCRYPTION_KEY")
-                    sync_svc = GitHubSyncService(enc_key.encode() if enc_key else None)
-                    token = sync_svc.decrypt_token(conn.access_token)
-                    await sync_svc.sync_evaluation(session, ev.id, token)
-                except Exception as e:
-                    logger.error(f"Scheduled sync failed for eval {ev.id}: {e}")
+        active_pairs = res.all()
+
+        enc_key = os.getenv("ENCRYPTION_KEY")
+        sync_svc = GitHubSyncService(enc_key.encode() if enc_key else None)
+        for ev, conn in active_pairs:
+            try:
+                token = sync_svc.decrypt_token(conn.access_token)
+                await sync_svc.sync_evaluation(session, ev.id, token)
+            except Exception as e:
+                logger.error(f"Scheduled sync failed for eval {ev.id}: {e}")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        if engine.dialect.name == "postgresql":
+            try:
+                trigger_sql_path = os.path.join(os.path.dirname(__file__), "db_trigger.sql")
+                if os.path.exists(trigger_sql_path):
+                    with open(trigger_sql_path, "r") as f:
+                        trigger_sql = f.read()
+                    await conn.execute(text(trigger_sql))
+                    logger.info("Installed score_breakdown immutability trigger successfully.")
+            except Exception as trg_err:
+                logger.warning(f"Could not install PostgreSQL trigger: {trg_err}")
 
     scheduler.add_job(scheduled_auto_lock, "interval", minutes=5)
     scheduler.add_job(scheduled_active_sync, "interval", minutes=15)

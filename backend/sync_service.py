@@ -56,6 +56,8 @@ FETCH_REPO_ACTIVITY_QUERY = """
 query GetRepoActivity(
   $owner: String!
   $name: String!
+  $since: GitTimestamp
+  $until: GitTimestamp
   $commitsCursor: String
   $prsCursor: String
 ) {
@@ -67,7 +69,7 @@ query GetRepoActivity(
     defaultBranchRef {
       target {
         ... on Commit {
-          history(first: 100, after: $commitsCursor) {
+          history(first: 100, after: $commitsCursor, since: $since, until: $until) {
             pageInfo {
               hasNextPage
               endCursor
@@ -81,6 +83,11 @@ query GetRepoActivity(
               author {
                 user {
                   login
+                }
+              }
+              files(first: 25) {
+                nodes {
+                  path
                 }
               }
             }
@@ -231,6 +238,8 @@ class GitHubSyncService:
                 variables = {
                     "owner": evaluation.repo_owner,
                     "name": evaluation.repo_name,
+                    "since": start_date.isoformat(),
+                    "until": end_date.isoformat(),
                     "commitsCursor": commits_cursor if has_more_commits else None,
                     "prsCursor": prs_cursor if has_more_prs else None,
                 }
@@ -268,9 +277,17 @@ class GitHubSyncService:
                                 additions=c_stmt.excluded.additions,
                                 deletions=c_stmt.excluded.deletions
                             )
-                        )
-                        await session.execute(c_stmt)
+                        ).returning(Commit.id)
+                        c_res = await session.execute(c_stmt)
+                        commit_id = c_res.scalar_one()
                         commits_pulled += 1
+
+                        # Store commit files for stability/churn score calculation
+                        file_nodes = node.get("files", {}).get("nodes", []) if node.get("files") else []
+                        for fnode in file_nodes:
+                            fname = fnode.get("path")
+                            if fname:
+                                session.add(CommitFile(commit_id=commit_id, filename=fname))
 
                 commit_page_info = history_data.get("pageInfo", {})
                 has_more_commits = commit_page_info.get("hasNextPage", False)

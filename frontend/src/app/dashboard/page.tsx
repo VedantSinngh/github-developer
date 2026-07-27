@@ -27,16 +27,32 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // In a real app, fetch from GET /evaluations here
-    // For now, simulate network delay to show Skeleton
-    setTimeout(() => {
-      setEvaluations([
-        { id: 1, candidate: "Jane Doe", repo: "acme/takehome-backend", status: "locked", score: 89.45 },
-        { id: 2, candidate: "John Smith", repo: "acme/live-project", status: "active", score: 76.20 },
-        { id: 3, candidate: "Alice Johnson", repo: "acme/frontend-eval", status: "pending", score: null },
-      ]);
-      setLoading(false);
-    }, 1000);
+    const token = localStorage.getItem("token");
+    if (!token) {
+      window.location.href = "/login";
+      return;
+    }
+
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    fetch(`${API_URL}/evaluations`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to fetch evaluations");
+        return res.json();
+      })
+      .then((data) => {
+        const mapped = data.map((item: any) => ({
+          id: item.id,
+          candidate: item.candidate_name,
+          repo: `${item.repo_owner}/${item.repo_name}`,
+          status: item.status,
+          score: item.final_score ? parseFloat(item.final_score) : null,
+        }));
+        setEvaluations(mapped);
+      })
+      .catch((err) => console.error("Error fetching evaluations:", err))
+      .finally(() => setLoading(false));
   }, []);
 
   const filtered = filter === "all" ? evaluations : evaluations.filter((e: Evaluation) => e.status === filter);

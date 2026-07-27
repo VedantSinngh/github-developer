@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import (
     Commit,
+    CommitFile,
     Evaluation,
     EvaluationStatus,
     PRComment,
@@ -248,6 +249,13 @@ async def persist_score(session: AsyncSession, evaluation_id: int) -> Evaluation
     if evaluation.status == EvaluationStatus.LOCKED:
         raise AlreadyLockedException(f"Evaluation {evaluation_id} is already locked.")
 
+    # Guard: check if score breakdown entries already exist
+    existing_sb_res = await session.execute(
+        select(ScoreBreakdown).where(ScoreBreakdown.evaluation_id == evaluation_id)
+    )
+    if existing_sb_res.scalars().first():
+        raise AlreadyLockedException(f"Score breakdown for evaluation {evaluation_id} already exists in ledger.")
+
     # Get role profile
     if not evaluation.role_profile_id:
         raise ValueError(f"Evaluation {evaluation_id} has no role profile assigned.")
@@ -262,6 +270,13 @@ async def persist_score(session: AsyncSession, evaluation_id: int) -> Evaluation
         select(Commit).where(Commit.evaluation_id == evaluation_id)
     )
     commits = list(commits_res.scalars().all())
+
+    files_res = await session.execute(
+        select(CommitFile.commit_id, CommitFile.filename)
+        .join(Commit)
+        .where(Commit.evaluation_id == evaluation_id)
+    )
+    commit_files = [(row[0], row[1]) for row in files_res.all()]
 
     prs_res = await session.execute(
         select(PullRequest).where(PullRequest.evaluation_id == evaluation_id)
@@ -284,7 +299,7 @@ async def persist_score(session: AsyncSession, evaluation_id: int) -> Evaluation
         start_date=evaluation.start_date,
         end_date=evaluation.end_date,
         commits=commits,
-        commit_files=[],
+        commit_files=commit_files,
         prs=prs,
         all_prs=prs,
         reviewers=reviewers,
