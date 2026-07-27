@@ -50,10 +50,20 @@ from schemas import (
 from scoring_engine import compute_final_score, persist_score
 from sync_service import GitHubSyncService
 
+import bcrypt
+
 SECRET_KEY = os.getenv("JWT_SECRET", "DEV_SECRET_KEY_CHANGE_IN_PRODUCTION")
 ALGORITHM = "HS256"
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer()
+
+def hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+def verify_password(password: str, hashed_password: str) -> bool:
+    try:
+        return bcrypt.checkpw(password.encode("utf-8"), hashed_password.encode("utf-8"))
+    except Exception:
+        return False
 
 limiter = Limiter(key_func=get_remote_address)
 router = APIRouter()
@@ -92,7 +102,7 @@ async def get_current_recruiter(
     status_code=status.HTTP_201_CREATED,
     summary="Register a new recruiter account",
 )
-@limiter.limit("3/minute")
+@limiter.limit("10/minute")
 async def register(request: Request, req: RecruiterRegisterRequest, db: AsyncSession = Depends(get_db)):
     res = await db.execute(select(Recruiter).where(Recruiter.email == req.email))
     if res.scalar_one_or_none():
@@ -100,7 +110,7 @@ async def register(request: Request, req: RecruiterRegisterRequest, db: AsyncSes
 
     recruiter = Recruiter(
         email=req.email,
-        hashed_password=pwd_context.hash(req.password),
+        hashed_password=hash_password(req.password),
         org_name=req.org_name,
     )
     db.add(recruiter)
@@ -114,11 +124,11 @@ async def register(request: Request, req: RecruiterRegisterRequest, db: AsyncSes
     response_model=TokenResponse,
     summary="Authenticate recruiter and issue JWT token",
 )
-@limiter.limit("5/minute")
+@limiter.limit("20/minute")
 async def login(request: Request, req: RecruiterLoginRequest, db: AsyncSession = Depends(get_db)):
     res = await db.execute(select(Recruiter).where(Recruiter.email == req.email))
     recruiter = res.scalar_one_or_none()
-    if not recruiter or not pwd_context.verify(req.password, recruiter.hashed_password):
+    if not recruiter or not verify_password(req.password, recruiter.hashed_password):
         raise HTTPException(status_code=401, detail="Incorrect email or password")
 
     token_data = {"sub": recruiter.email, "org": recruiter.org_name}
